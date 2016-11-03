@@ -27,10 +27,7 @@ Captions : https://drive.google.com/file/d/0B0ywwgffWnLLcms2WWJQRFNSWXM/view
 
 Code References
 ---------------
-- GAN-CLS by TensorFlow
-- https://github.com/paarthneekhara/text-to-image/blob/master/train.py
-- https://github.com/paarthneekhara/text-to-image/blob/master/model.py
-- https://github.com/paarthneekhara/text-to-image/blob/master/Utils/ops.py
+- `GAN-CLS by TensorFlow <https://github.com/paarthneekhara/text-to-image/blob/master/model.py>`_
 """
 ###======================== PREPARE DATA ====================================###
 ## Directory of Oxford 102 flowers dataset
@@ -139,8 +136,8 @@ print("n_captions: %d batch_size: %d n_captions_per_image: %d" % (n_captions, ba
 def embed_seq(input_seqs, is_train, reuse):
     """MY IMPLEMENTATION, same weights for the Word Embedding and RNN in the discriminator and generator.
     """
-    # w_init = tf.random_normal_initializer(stddev=0.02)
-    w_init = tf.constant_initializer(value=0.0)
+    w_init = tf.random_normal_initializer(stddev=0.02)
+    # w_init = tf.constant_initializer(value=0.0)
     with tf.variable_scope("model", reuse=reuse):
         tl.layers.set_name_reuse(reuse)
         network = tl.layers.EmbeddingInputlayer(
@@ -159,7 +156,7 @@ def embed_seq(input_seqs, is_train, reuse):
                      name = 'e_dynamicrnn',)
     return network
 
-def generator(input_z, net_embed_seq, is_train, reuse):
+def generator(net_input_z, net_embed_seq, is_train, reuse):
     """
     IMPLEMENTATION based on : https://github.com/paarthneekhara/text-to-image/blob/master/model.py
     """
@@ -169,7 +166,6 @@ def generator(input_z, net_embed_seq, is_train, reuse):
     gamma_init=tf.random_normal_initializer(1., 0.02)
     with tf.variable_scope("model", reuse=reuse):
         tl.layers.set_name_reuse(reuse)
-        net_input_z = tl.layers.InputLayer(input_z, name='g_inputz')
         ## reduce dim for seq_embedding
         network = tl.layers.DenseLayer(net_embed_seq, n_units=t_dim,
                     act= lambda x: tl.act.lrelu(x, 0.2),
@@ -234,7 +230,7 @@ def generator(input_z, net_embed_seq, is_train, reuse):
         # exit()
     return net_h4
 
-def discriminator(input_images, net_embed_seq, is_train, reuse):
+def discriminator(net_g, net_embed_seq, is_train, reuse):
     """
     IMPLEMENTATION based on : https://github.com/paarthneekhara/text-to-image/blob/master/model.py
     """
@@ -242,8 +238,7 @@ def discriminator(input_images, net_embed_seq, is_train, reuse):
     gamma_init=tf.random_normal_initializer(1., 0.02)
     with tf.variable_scope("model", reuse=reuse):
         tl.layers.set_name_reuse(reuse)
-        net_input_img = tl.layers.InputLayer(input_images, name='d_inputimages')
-        net_h0 = tl.layers.Conv2dLayer(net_input_img, shape=[5, 5, c_dim, df_dim],
+        net_h0 = tl.layers.Conv2dLayer(net_g, shape=[5, 5, c_dim, df_dim],
                                W_init = w_init, strides=[1, 2, 2, 1], name='d_h0/conv2d')
         net_h0.outputs = tl.act.lrelu(net_h0.outputs, alpha=0.2, name='d_h0/lrelu')
             # h0 = ops.lrelu(ops.conv2d(image, self.options['df_dim'], name = 'd_h0_conv')) #32
@@ -298,67 +293,56 @@ def discriminator(input_images, net_embed_seq, is_train, reuse):
         # exit()
     return net_h4, logits
 
-##
-# https://github.com/paarthneekhara/text-to-image/blob/master/train.py
-# https://github.com/paarthneekhara/text-to-image/blob/master/model.py
-# https://github.com/paarthneekhara/text-to-image/blob/master/Utils/ops.py
-## build_model
-t_real_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3 ], name = 'real_image')
-t_wrong_image = tf.placeholder('float32', [batch_size ,image_size, image_size, 3 ], name = 'wrong_image')
-t_real_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='real_caption_input')
-t_z = tf.placeholder('float32', [batch_size, z_dim], name='z_noise')
 
-# net_input_z = tl.layers.InputLayer(input_z, name='input/real_caption')
-# net_input_z = tl.layers.InputLayer(input_z, name='input/z')
 
-net_fake_image = generator(t_z, embed_seq(t_real_caption, is_train=True, reuse=False), is_train=True, reuse=False)
-_, disc_real_image_logits = discriminator(t_real_image,
-                embed_seq(t_real_caption, is_train=True, reuse=True),
-                is_train=True, reuse=False)
-_, disc_wrong_image_logits = discriminator(t_wrong_image,
-                embed_seq(t_real_caption, is_train=True, reuse=True),
-                is_train=True, reuse = True)
-_, disc_fake_image_logits   = discriminator(net_fake_image.outputs,
-                embed_seq(t_real_caption, is_train=True, reuse=True),
-                is_train=True, reuse = True)
+
+# t_real_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3 ], name = 'real_image')
+# t_wrong_image = tf.placeholder('float32', [batch_size ,image_size, image_size, 3 ], name = 'wrong_image')
+# t_real_caption = tf.placeholder('float32', [batch_size, self.options['caption_vector_length']], name = 'real_caption_input')
+# t_z = tf.placeholder('float32', [batch_size, z_dim])
+#
 # fake_image = self.generator(t_z, t_real_caption)
+
 # disc_real_image, disc_real_image_logits   = self.discriminator(t_real_image, t_real_caption)
 # disc_wrong_image, disc_wrong_image_logits   = self.discriminator(t_wrong_image, t_real_caption, reuse = True)
 # disc_fake_image, disc_fake_image_logits   = self.discriminator(fake_image, t_real_caption, reuse = True)
-
-g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.ones_like(disc_fake_image_logits))) # real == 1, fake == 0
-
-d_loss1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real_image_logits, tf.ones_like(disc_real_image_logits)))
-d_loss2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_wrong_image_logits, tf.zeros_like(disc_wrong_image_logits)))
-d_loss3 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.zeros_like(disc_fake_image_logits)))
-
-d_loss = d_loss1 + d_loss2 + d_loss3
-
-## debug
-# check = embed_seq(t_real_caption, is_train=True, reuse=True)
-
-# ## define placeholder # does not work
-# input_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
-# input_seqs = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name="input_seqs")               # matched text = arbitrary text                # input_seqs = tf.expand_dims(input_seqs, 1, name="input_seqs")
-# input_seqs_mis = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name="input_seqs_mismatch")  # mismatched text (for CLS)
-# input_images =  tf.placeholder(tf.float32, [batch_size, 64, 64, 3], name='real_images')                # image
 #
-# ## Inference for Training
-# net_input_z       = tl.layers.InputLayer(input_z, name='input/z')
-# net_input_images  = tl.layers.InputLayer(input_images, name='input/real_images')
-# net_embed_seq     = embed_seq(input_seqs, is_train=True, reuse=False)
-# net_embed_seq_mis = embed_seq(input_seqs_mis, is_train=True, reuse=True)
-# ### noise + arbitrary text --> generator --> discriminator
-# net_g = generator(net_input_z, net_embed_seq, is_train=True, reuse=False)
-# _, d_logits = discriminator(net_g, net_embed_seq, is_train=True, reuse=False)
-# ### real_images + matched text --> discriminator
-# _, d2_logits = discriminator(net_input_images, net_embed_seq, is_train=True, reuse=True)
-# ### real_images + mismatched text --> discriminator (for CLS)
-# _, d3_logits = discriminator(net_input_images, net_embed_seq_mis, is_train=True, reuse=True)
+# g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.ones_like(disc_fake_image)))
 #
-# ### Inference for Predicting
-# net_embed_seq2 = embed_seq(input_seqs, is_train=False, reuse=True)
-# net_g2 = generator(net_input_z, net_embed_seq2, is_train=False, reuse=True)
+# d_loss1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real_image_logits, tf.ones_like(disc_real_image)))
+# d_loss2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_wrong_image_logits, tf.zeros_like(disc_wrong_image)))
+# d_loss3 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.zeros_like(disc_fake_image)))
+#
+# d_loss = d_loss1 + d_loss2 + d_loss3
+#
+# t_vars = tf.trainable_variables()
+# d_vars = [var for var in t_vars if 'd_' in var.name]
+# g_vars = [var for var in t_vars if 'g_' in var.name]
+
+
+## define placeholder
+input_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
+input_seqs = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name="input_seqs")               # matched text = arbitrary text                # input_seqs = tf.expand_dims(input_seqs, 1, name="input_seqs")
+input_seqs_mis = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name="input_seqs_mismatch")  # mismatched text (for CLS)
+input_images =  tf.placeholder(tf.float32, [batch_size, 64, 64, 3], name='real_images')                # image
+
+## Inference for Training
+net_input_z       = tl.layers.InputLayer(input_z, name='input/z')
+net_input_images  = tl.layers.InputLayer(input_images, name='input/real_images')
+net_embed_seq     = embed_seq(input_seqs, is_train=True, reuse=False)
+net_embed_seq_mis = embed_seq(input_seqs_mis, is_train=True, reuse=True)
+### noise + arbitrary text --> generator --> discriminator
+net_g = generator(net_input_z, net_embed_seq, is_train=True, reuse=False)
+_, d_logits = discriminator(net_g, net_embed_seq, is_train=True, reuse=False)
+### real_images + matched text --> discriminator
+_, d2_logits = discriminator(net_input_images, net_embed_seq, is_train=True, reuse=True)
+### real_images + mismatched text --> discriminator (for CLS)
+_, d3_logits = discriminator(net_input_images, net_embed_seq_mis, is_train=True, reuse=True)
+
+### Inference for Predicting
+net_embed_seq2 = embed_seq(input_seqs, is_train=False, reuse=True)
+net_g2 = generator(net_input_z, net_embed_seq2, is_train=False, reuse=True)
+
 # net_d.all_params = list_remove_repeat(net_d.all_params)
 # net_d.all_layers = list_remove_repeat(net_d.all_layers)
 
@@ -367,17 +351,17 @@ d_loss = d_loss1 + d_loss2 + d_loss3
 
 ####======================== DEFINE COST ====================================###
 ## Cost   real == 1, fake == 0
-# ## Discriminator
-# # real images + matched text
-# d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(d2_logits, tf.ones_like(d2_logits)))
-# # synthetic images + arbitrary text
-# d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(d_logits, tf.zeros_like(d_logits)))
-# # real image + mismatched text (CLS)
-# d_loss_mis = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(d3_logits, tf.zeros_like(d3_logits)))
-# d_loss = d_loss_real + d_loss_fake + d_loss_mis
-# ## Generator
-# # try to make the the fake images look real (1)
-# g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(d_logits, tf.ones_like(d_logits)))  # try to cheat discriminator
+## Discriminator
+# real images + matched text
+d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(d2_logits, tf.ones_like(d2_logits)))
+# synthetic images + arbitrary text
+d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(d_logits, tf.zeros_like(d_logits)))
+# real image + mismatched text (CLS)
+d_loss_mis = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(d3_logits, tf.zeros_like(d3_logits)))
+d_loss = d_loss_real + d_loss_fake + d_loss_mis
+## Generator
+# try to make the the fake images look real (1)
+g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(d_logits, tf.ones_like(d_logits)))  # try to cheat discriminator
 
 ## optimizers for updating discriminator and generator
 lr = 0.0002
@@ -385,8 +369,8 @@ beta1 = 0.5
 e_vars = get_variable_with_name('e_', True, True)
 g_vars = get_variable_with_name('d_', True, True)
 d_vars = get_variable_with_name('g_', True, True)
-d_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(d_loss, var_list=d_vars )#+ e_vars)      # When should we update embedding and rnn ?
-g_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=g_vars )#+ e_vars)
+d_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(d_loss, var_list=d_vars + e_vars)      # When should we update embedding and rnn ?
+g_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=g_vars + e_vars)
 
 ###============================ TRAINING ====================================###
 # gpu_opt = tf.GPUOptions(per_process_gpu_memory_fraction = 0.9)
@@ -417,16 +401,13 @@ for epoch in range(n_epoch):
         step_time = time.time()
         ## get real image + matched text
         idexs = generate_random_int(min=0, max=n_captions-1, number=batch_size)
-        b_real_caption = captions_ids[idexs]
-        b_real_caption = tl.prepro.pad_sequences(b_real_caption, padding='post')                                            # matched text  (64, any)
-        b_real_images = images[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real images   (64, 64, 64, 3)
+        b_seqs = captions_ids[idexs]
+        b_seqs = tl.prepro.pad_sequences(b_seqs, padding='post')                                            # matched text  (64, any)
+        b_images = images[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real images   (64, 64, 64, 3)
         ## get mismatched text
-        # idexs = generate_random_int(min=0, max=n_captions-1, number=batch_size)
-        # b_seqs_mis = captions_ids[idexs]
-        # b_seqs_mis = tl.prepro.pad_sequences(b_seqs_mis, padding='post')                                    # mismatched text
-        ## get wrong image
-        idexs = generate_random_int(min=0, max=n_images-1, number=batch_size)
-        b_wrong_images = images[idexs]
+        idexs = generate_random_int(min=0, max=n_captions-1, number=batch_size)
+        b_seqs_mis = captions_ids[idexs]
+        b_seqs_mis = tl.prepro.pad_sequences(b_seqs_mis, padding='post')                                    # mismatched text
         # idexs = generate_random_int(min=0, max=n_images-1, number=batch_size)
         # b_images_mis = images[idexs]
         ## get noise
@@ -439,26 +420,13 @@ for epoch in range(n_epoch):
         ## updates the discriminator
         # for _ in range(200):
         errD, _ = sess.run([d_loss, d_optim], feed_dict={
-                        t_real_image : b_real_images,
-                        t_wrong_image : b_wrong_images,
-                        t_real_caption : b_real_caption,
-                        t_z : b_z})
-                        # input_z: b_z,                   # noise z
-                        # input_seqs: b_seqs,             # matched text == arbitrary text
-                        # input_images: b_images,         # real images
-                        # input_seqs_mis: b_seqs_mis})    # mismatched text
+                        input_z: b_z,                   # noise z
+                        input_seqs: b_seqs,             # matched text == arbitrary text
+                        input_images: b_images,         # real images
+                        input_seqs_mis: b_seqs_mis})    # mismatched text
         # if epoch % 5 == 0:   # Hao : skip training G
             ## updates the generator
-        errG, _ = sess.run([g_loss, g_optim],
-            feed_dict={
-                        # t_real_image : b_real_images,
-                        # t_wrong_image : b_wrong_images,
-                        t_real_caption : b_real_caption,
-                        t_z : b_z})
-
-        # print(sess.run(check.outputs, feed_dict={t_real_caption : b_real_caption}))
-
-            # feed_dict={input_z: b_z, input_seqs: b_seqs})
+        errG, _ = sess.run([g_loss, g_optim], feed_dict={input_z: b_z, input_seqs: b_seqs})
         # else:
         #     errG = 0
             ## run generator twice to make sure that d_loss does not go to zero (difference from paper)
@@ -477,8 +445,7 @@ for epoch in range(n_epoch):
 
     if (epoch + 1) % print_freq == 0:
         print(" ** Epoch %d took %fs" % (epoch, time.time()-start_time))
-        # img_gen = sess.run(net_g2.outputs, feed_dict={input_z: sample_seed, input_seqs: sample_sentence})
-        img_gen = sess.run(net_fake_image.outputs, feed_dict={t_z: sample_seed, t_real_caption: sample_sentence})
+        img_gen = sess.run(net_g2.outputs, feed_dict={input_z: sample_seed, input_seqs: sample_sentence})
         tl.visualize.frame(img_gen[0], second=0, saveable=True, name='e_%d_%s' % (epoch, " ".join([vocab.id_to_word(id) for id in sample_sentence[0]])) )
         # for i, img in enumerate(img_gen):
         #     tl.visualize.frame(img, second=0, saveable=True, name='epoch_%d_sample_%d_%s' % (epoch, i, [vocab.id_to_word(id) for id in sample_sentence[i]]) )
