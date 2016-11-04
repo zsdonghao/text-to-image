@@ -382,9 +382,9 @@ d_loss = d_loss1 + d_loss2 + d_loss3
 ## optimizers for updating discriminator and generator
 lr = 0.0002
 beta1 = 0.5
-e_vars = get_variable_with_name('e_', True, True)
-g_vars = get_variable_with_name('d_', True, True)
-d_vars = get_variable_with_name('g_', True, True)
+e_vars = tl.layers.get_variables_with_name('e_', True, True)
+g_vars = tl.layers.get_variables_with_name('d_', True, True)
+d_vars = tl.layers.get_variables_with_name('g_', True, True)
 d_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(d_loss, var_list=d_vars )#+ e_vars)      # When should we update embedding and rnn ?
 g_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=g_vars )#+ e_vars)
 

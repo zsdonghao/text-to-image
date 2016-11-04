@@ -60,17 +60,21 @@ def list_remove_repeat(l=[]):
 
 #layers Name Scope Functions
 # print_all_variables
-def get_variable_with_name(name, train_only=True, printable=False):
-    """Get variable list by a given name scope.
-    """
-    print("  Get variables with %s" % name)
-    # t_vars = tf.trainable_variables()
-    t_vars = tf.trainable_variables() if train_only else tf.all_variables()
-    d_vars = [var for var in t_vars if name in var.name]
-    if printable:
-        for idx, v in enumerate(d_vars):
-            print("  got {:3}: {:15}   {}".format(idx, v.name, str(v.get_shape())))
-    return d_vars
+# def get_variables_with_name(name, train_only=True, printable=False):
+#     """Get variable list by a given name scope.
+#
+#     Examples
+#     ---------
+#     >>> dense_vars = get_variable_with_name('dense', True, True)
+#     """
+#     print("  Get variables with %s" % name)
+#     # t_vars = tf.trainable_variables()
+#     t_vars = tf.trainable_variables() if train_only else tf.all_variables()
+#     d_vars = [var for var in t_vars if name in var.name]
+#     if printable:
+#         for idx, v in enumerate(d_vars):
+#             print("  got {:3}: {:15}   {}".format(idx, v.name, str(v.get_shape())))
+#     return d_vars
 
 
 
