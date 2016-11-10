@@ -6,7 +6,6 @@
 import tensorflow as tf
 import tensorlayer as tl
 from tensorlayer.layers import *
-from tensorlayer.prepro import *
 import numpy as np
 import scipy
 from scipy.io import loadmat
@@ -17,7 +16,6 @@ import nltk
 import random
 
 from utils import *
-
 
 """ Generative Adversarial Text to Image Synthesis
 
@@ -94,9 +92,7 @@ if True:
     images = []
     for name in imgs_title_list:
         img = scipy.misc.imread( os.path.join(img_dir, name) )
-        img = tl.prepro.imresize(img, size=[64, 64])    # (64, 64, 3)
-        img = img / 255.0                                         # Hao Dong : do not forget !  img [0, 1]
-        img = img.astype(np.float32)
+        img = tl.prepro.imresize(img, size=[64, 64])
         images.append(img)
     images = np.asarray(images)
     print(" * loading and resizing took %ss" % (time.time()-s))
@@ -123,32 +119,30 @@ image_size = 64     # 64 x 64
 c_dim = 3           # for rgb
 gf_dim = 64         # Number of conv in the first layer generator 64
 df_dim = 64         # Number of conv in the first layer discriminator 64
-# gfc_dim = 1024      # Dimension of gen untis for for fully connected layer 1024
+gfc_dim = 1024      # Dimension of gen untis for for fully connected layer 1024
 # caption_vector_length = 2400 # Caption Vector Length 2400   Hao : I use word-based dynamic_rnn
 
-print("n_captions: %d batch_size: %d n_captions_per_image: %d" % (n_captions, batch_size, n_captions_per_image))
+# print("n_captions: %d batch_size: %d n_captions_per_image: %d" % (n_captions, batch_size, n_captions_per_image))
 
 # ## generate a random batch
 # idexs = generate_random_int(0, n_captions, batch_size)
-# idexs = [i for i in range(0,100)]
-# print(idexs)
+# # idexs = [i for i in range(0,100)]
+# # print(idexs)
 # b_seqs = captions_ids[idexs]
 # b_images = images[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]
 # print("before padding %s" % b_seqs)
 # b_seqs = tl.prepro.pad_sequences(b_seqs, padding='post')
 # print("after padding %s" % b_seqs)
 # # print(input_images.shape)   # (64, 64, 64, 3)
+# tl.visualize.images2d(b_images, second=5, saveable=True, name='temp2')
 # for ids in b_seqs:
 #     print([vocab.id_to_word(id) for id in ids])
-# print(np.max(b_images), np.min(b_images), b_images.shape)
-# tl.visualize.images2d(b_images, second=5, saveable=True, name='temp2')
-# exit()
 
 def rnn_embed(input_seqs, is_train, reuse):
     """MY IMPLEMENTATION, same weights for the Word Embedding and RNN in the discriminator and generator.
     """
-    w_init = tf.random_normal_initializer(stddev=0.02)
-    # w_init = tf.constant_initializer(value=0.0)
+    # w_init = tf.random_normal_initializer(stddev=0.02)
+    w_init = tf.constant_initializer(value=0.0)
     with tf.variable_scope("rnn", reuse=reuse):
         tl.layers.set_name_reuse(reuse)
         network = EmbeddingInputlayer(
@@ -165,101 +159,106 @@ def rnn_embed(input_seqs, is_train, reuse):
                      sequence_length = tl.layers.retrieve_seq_length_op2(input_seqs),
                      return_last = True,
                      name = 'dynamicrnn',)
-        network = DenseLayer(network, n_units=t_dim,    # G and D share the same dense layer for reduce_txt
-                act=lambda x: tl.act.lrelu(x, 0.2), W_init=w_init, name='reduce_txt/dense')
     return network
 
-def generator_txt2img(input_z, net_rnn_embed, is_train, reuse):
+def generator(input_z, net_rnn_embed, is_train, reuse):
     """IMPLEMENTATION based on : https://github.com/paarthneekhara/text-to-image/blob/master/model.py
     """
     s = image_size
     s2, s4, s8, s16 = int(s/2), int(s/4), int(s/8), int(s/16)
-
     w_init = tf.random_normal_initializer(stddev=0.02)
+    b_init = tf.constant_initializer(value=0.0)
     gamma_init = tf.random_normal_initializer(1., 0.02)
-
     with tf.variable_scope("generator", reuse=reuse):
         tl.layers.set_name_reuse(reuse)
         net_input_z = InputLayer(input_z, name='g_inputz')
-        # # net_reduced_text = DenseLayer(net_rnn_embed, n_units=t_dim, act= lambda x: tl.act.lrelu(x, 0.2),  # local reduce_txt, remove if reduce_txt in rnn_embed
-        # #         W_init = w_init, name='g_reduce_text/dense')                                              # local reduce_txt, remove if reduce_txt in rnn_embed
-        net_reduced_text = net_rnn_embed  # if reduce_txt in rnn_embed
-
+        net_reduced_text = DenseLayer(net_rnn_embed, n_units=t_dim, act= lambda x: tl.act.lrelu(x, 0.2),
+                W_init = w_init, name='g_reduce_text/dense')
+            # reduced_text_embedding = ops.lrelu( ops.linear(t_text_embedding, self.options['t_dim'], 'g_embedding') )
         net_z_concat = ConcatLayer([net_input_z, net_reduced_text], concat_dim=1, name='g_concat_z_seq')
-        # net_z_concat = net_input_z # no text info, if DCGAN only
-
-        net_h0 = DenseLayer(net_z_concat, gf_dim*8*s16*s16,
+            # z_concat = tf.concat(1, [t_z, reduced_text_embedding])
+        net_z_txt = DenseLayer(net_z_concat, gf_dim*8*s16*s16,
                 act = tf.identity, W_init = w_init, name='g_h0/dense')
-        net_h0 = ReshapeLayer(net_h0, [-1, s16, s16, gf_dim*8], name='g_h0/reshape')
-        net_h0 = BatchNormLayer(net_h0, act=tf.nn.relu, is_train=is_train,
-                gamma_init=gamma_init, name='g_h0/batch_norm')
+            # z_ = ops.linear(z_concat, self.options['gf_dim']*8*s16*s16, 'h0_lin')
+        net_z_txt = ReshapeLayer(net_z_txt, [-1, s16, s16, gf_dim*8], name='g_h0/reshape')
+            # h0 = tf.reshape(z_, [-1, s16, s16, self.options['gf_dim'] * 8])
+        net_h0 = BatchNormLayer(net_z_txt, act = tf.nn.relu,
+                is_train=is_train, gamma_init=gamma_init, name='g_h0/batchnorm')
+            # h0 = tf.nn.relu(self.g_bn0(h0))
 
-        net_h1 = DeConv2d(net_h0, gf_dim*4, (5, 5), out_size=(s8, s8), strides=(2, 2),
-                padding = 'SAME', batch_size=batch_size, act=None, W_init=w_init, name='g_h1/decon2d')
-        net_h1 = BatchNormLayer(net_h1, act=tf.nn.relu, is_train=is_train,
-                gamma_init=gamma_init, name='g_h1/batch_norm')
+        net_h1 = DeConv2d(net_h0, gf_dim*4, (5, 5), out_size = (s8, s8), strides = (2, 2),
+                padding = 'SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='g_h1/decon2d')
+            # h1 = ops.deconv2d(h0, [self.options['batch_size'], s8, s8, self.options['gf_dim']*4], name='g_h1')
+        net_h1 = BatchNormLayer(net_h1, act = tf.nn.relu,
+                is_train=is_train, gamma_init=gamma_init, name='g_h1/batchnorm')
+            # h1 = tf.nn.relu(self.g_bn1(h1, train = False))
 
-        net_h2 = DeConv2d(net_h1, gf_dim*2, (5, 5), out_size=(s4, s4), strides=(2, 2),
-                padding = 'SAME', batch_size=batch_size, act=None, W_init=w_init, name='g_h2/decon2d')
-        net_h2 = BatchNormLayer(net_h2, act=tf.nn.relu, is_train=is_train,
-                gamma_init=gamma_init, name='g_h2/batch_norm')
+        net_h2 = DeConv2d(net_h1, gf_dim*2, (5, 5), out_size = (s4, s4), strides = (2, 2),
+                padding = 'SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='g_h2/decon2d')
+            # h2 = ops.deconv2d(h1, [self.options['batch_size'], s4, s4, self.options['gf_dim']*2], name='g_h2')
+        net_h2 = BatchNormLayer(net_h2, act = tf.nn.relu,
+                is_train=is_train, gamma_init=gamma_init, name='g_h2/batchnorm')
+            # h2 = tf.nn.relu(self.g_bn2(h2))
 
-        net_h3 = DeConv2d(net_h2, gf_dim, (5, 5), out_size=(s2, s2), strides=(2, 2),
-                padding = 'SAME', batch_size=batch_size, act=None, W_init=w_init, name='g_h3/decon2d')
-        net_h3 = BatchNormLayer(net_h3, act=tf.nn.relu, is_train=is_train,
-                gamma_init=gamma_init, name='g_h3/batch_norm')
+        net_h3 = DeConv2d(net_h2, gf_dim*1, (5, 5), out_size = (s2, s2), strides = (2, 2),
+                padding = 'SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='g_h3/decon2d')
+            # h3 = ops.deconv2d(h2, [self.options['batch_size'], s2, s2, self.options['gf_dim']*1], name='g_h3')
+        net_h3 = BatchNormLayer(net_h3, act = tf.nn.relu,
+                is_train=is_train, gamma_init=gamma_init, name='g_h3/batchnorm')
+            # h3 = tf.nn.relu(self.g_bn3(h3))
 
         net_h4 = DeConv2d(net_h3, c_dim, (5, 5), out_size = (s, s), strides = (2, 2),
-                padding = 'SAME', batch_size=batch_size, act=None, W_init=w_init, name='g_h4/decon2d')
-        logits = net_h4.outputs
-        net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)  # DCGAN uses tanh
-    return net_h4, logits
+                padding = 'SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='g_h4/decon2d')
+            # h4 = ops.deconv2d(h3, [self.options['batch_size'], s, s, c_dim], name='g_h4')
+        net_h4.outputs = tf.nn.tanh(net_h4.outputs) / 2 + 0.5   # (0, 1)
+            # net_h4.outputs = tf.nn.tanh(net_h4.outputs) # dcgan uses this
+    return net_h4
 
-def discriminator_txt2img(input_images, net_rnn_embed, is_train, reuse):
+def discriminator(input_images, net_rnn_embed, is_train, reuse):
     """IMPLEMENTATION based on : https://github.com/paarthneekhara/text-to-image/blob/master/model.py
     """
     w_init = tf.random_normal_initializer(stddev=0.02)
     gamma_init=tf.random_normal_initializer(1., 0.02)
     with tf.variable_scope("discriminator", reuse=reuse):
         tl.layers.set_name_reuse(reuse)
-
-        net_in_img = InputLayer(input_images, name='d_input/images')
-        net_h0 = Conv2d(net_in_img, df_dim, (5, 5), (2, 2), act=lambda x: tl.act.lrelu(x, 0.2),
-                padding='SAME', W_init=w_init, name='d_h0/conv2d')  # (64, 32, 32, 64)
-
-        net_h1 = Conv2d(net_h0, df_dim*2, (5, 5), (2, 2), act=None,
-                padding='SAME', W_init=w_init, name='d_h1/conv2d')
+        net_input_img = InputLayer(input_images, name='d_inputimages')
+        net_h0 = Conv2d(net_input_img, df_dim, (5, 5), (2, 2), padding='SAME',
+                act=lambda x: tl.act.lrelu(x, 0.2), W_init=w_init, name='d_h0/conv2d')  # (64, 32, 32, 64)
+            # h0 = ops.lrelu(ops.conv2d(image, self.options['df_dim'], name = 'd_h0_conv')) #32
+        net_h1 = Conv2d(net_h0, df_dim*2, (5, 5), (2, 2), padding='SAME', W_init=w_init, name='d_h1/conv2d')
         net_h1 = BatchNormLayer(net_h1, act=lambda x: tl.act.lrelu(x, 0.2),
                 is_train=is_train, gamma_init=gamma_init, name='d_h1/batchnorm') # (64, 16, 16, 128)
-
-        net_h2 = Conv2d(net_h1, df_dim*4, (5, 5), (2, 2), act=None,
-                padding='SAME', W_init=w_init, name='d_h2/conv2d')
+            # h1 = ops.lrelu( self.d_bn1(ops.conv2d(h0, self.options['df_dim']*2, name = 'd_h1_conv'))) #16
+        net_h2 = Conv2d(net_h1, df_dim*4, (5, 5), (2, 2), padding='SAME', W_init=w_init, name='d_h2/conv2d')
         net_h2 = BatchNormLayer(net_h2, act=lambda x: tl.act.lrelu(x, 0.2),
                 is_train=is_train, gamma_init=gamma_init, name='d_h2/batchnorm')    # (64, 8, 8, 256)
-
+            # h2 = ops.lrelu( self.d_bn2(ops.conv2d(h1, self.options['df_dim']*4, name = 'd_h2_conv'))) #8
         net_h3 = Conv2d(net_h2, df_dim*8, (5, 5), (2, 2), padding='SAME', W_init=w_init, name='d_h3/conv2d')
         net_h3 = BatchNormLayer(net_h3, act=lambda x: tl.act.lrelu(x, 0.2),
                 is_train=is_train, gamma_init=gamma_init, name='d_h3/batchnorm') # (64, 4, 4, 512)
-
-        # # net_reduced_text = DenseLayer(net_rnn_embed, n_units=t_dim,                           # local reduce_txt, remove if reduce_txt in rnn_embed
-        # #        act=lambda x: tl.act.lrelu(x, 0.2), W_init=w_init, name='d_reduce_txt/dense') # local reduce_txt, remove if reduce_txt in rnn_embed
-        net_reduced_text = net_rnn_embed  # if reduce_txt in rnn_embed
+            # h3 = ops.lrelu( self.d_bn3(ops.conv2d(h2, self.options['df_dim']*8, name = 'd_h3_conv'))) #4
+        net_reduced_text = DenseLayer(net_rnn_embed, n_units=t_dim,
+                act=lambda x: tl.act.lrelu(x, 0.2), W_init=w_init, name='d_embedseq/dense')
+            # reduced_text_embeddings = ops.lrelu(ops.linear(t_text_embedding, self.options['t_dim'], 'd_embedding'))
         net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 1)
         net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 2)
         net_reduced_text.outputs = tf.tile(net_reduced_text.outputs, [1, 4, 4, 1], name='d_tiled_embeddings')
-
+            # print(net_reduced_text.outputs) # (64, 4, 4, 128)
+    		# reduced_text_embeddings = tf.expand_dims(reduced_text_embeddings,1)
+    		# reduced_text_embeddings = tf.expand_dims(reduced_text_embeddings,2)
+    		# tiled_embeddings = tf.tile(reduced_text_embeddings, [1,4,4,1], name='tiled_embeddings')
         net_h3_concat = ConcatLayer([net_h3, net_reduced_text], concat_dim=3, name='d_h3_concat') # (64, 4, 4, 640)
-        # net_h3_concat = net_h3 # no text info
+            # h3_concat = tf.concat( 3, [h3, tiled_embeddings], name='h3_concat')
         net_h3 = Conv2d(net_h3_concat, df_dim*8, (1, 1), (1, 1), padding='SAME', W_init=w_init, name='d_h3/conv2d_2')
         net_h3 = BatchNormLayer(net_h3, act=lambda x: tl.act.lrelu(x, 0.2),
                 is_train=is_train, gamma_init=gamma_init, name='d_h3/batch_norm_2') # (64, 4, 4, 512)
-
-        # net_h4 = ReshapeLayer(net_h3, [batch_size, -1], name='d_h4/reshape')    # flatten (64, 8192)
-        net_h4 = FlattenLayer(net_h3, name='d_h4/flatten')
-        net_h4 = DenseLayer(net_h4, n_units=1, act=tf.identity,
-                W_init = w_init, name='d_h4/dense')
+        	# h3_new = ops.lrelu( self.d_bn4(ops.conv2d(h3_concat, self.options['df_dim']*8, 1,1,1,1, name = 'd_h3_conv_new'))) #4
+        net_h4 = ReshapeLayer(net_h3, [batch_size, -1], name='d_h4/reshape')    # flatten (64, 8192)
+        net_h4 = DenseLayer(net_h4, n_units=1, act=tf.identity, W_init = w_init, name='d_h4/dense')
+            # h4 = ops.linear(tf.reshape(h3_new, [self.options['batch_size'], -1]), 1, 'd_h3_lin')
         logits = net_h4.outputs
-        net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)  # (64, 1)
+        net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)  # (batch_size, 1)
+            # return tf.nn.sigmoid(h4), h4
     return net_h4, logits
 
 # with tf.device("/gpu:0"):
@@ -269,54 +268,39 @@ def discriminator_txt2img(input_images, net_rnn_embed, is_train, reuse):
 # https://github.com/paarthneekhara/text-to-image/blob/master/Utils/ops.py
 ## build_model
 t_real_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3 ], name = 'real_image')
-# t_wrong_image = tf.placeholder('float32', [batch_size ,image_size, image_size, 3 ], name = 'wrong_image')    # remove if DCGAN only
-# t_real_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='real_caption_input')     # remove if DCGAN only
-t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
+t_wrong_image = tf.placeholder('float32', [batch_size ,image_size, image_size, 3 ], name = 'wrong_image')
+t_real_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='real_caption_input')
+t_z = tf.placeholder('float32', [batch_size, z_dim], name='z_noise')
 
+# net_input_z =  InputLayer(input_z, name='input/real_caption')
+# net_input_z = tl.layers.InputLayer(input_z, name='input/z')
+## for training
+net_fake_image = generator(t_z,
+                rnn_embed(t_real_caption, is_train=True, reuse=False),
+                is_train=True, reuse=False)
+_, disc_real_image_logits = discriminator(t_real_image,
+                rnn_embed(t_real_caption, is_train=True, reuse=True),
+                is_train=True, reuse=False)
+_, disc_wrong_image_logits = discriminator(t_wrong_image,
+                rnn_embed(t_real_caption, is_train=True, reuse=True),
+                is_train=True, reuse = True)
+_, disc_fake_image_logits  = discriminator(net_fake_image.outputs,
+                rnn_embed(t_real_caption, is_train=True, reuse=True),
+                is_train=True, reuse = True)
 
-## training inference for training DCGAN
-from dcgan_model import *
-net_fake_image, _ = generator_dcgan(t_z, is_train=True, reuse=False)
-_, disc_fake_image_logits = discriminator_dcgan(net_fake_image.outputs, is_train=True, reuse=False)
-_, disc_real_image_logits = discriminator_dcgan(t_real_image, is_train=True, reuse=True)
+## for generating
+net_generator = generator(t_z, rnn_embed(t_real_caption, is_train=False, reuse=True), is_train=False, reuse=True)
 
-## training inference for txt2img
-# net_fake_image, _ = generator_txt2img(t_z,
-#                 rnn_embed(t_real_caption, is_train=True, reuse=False),   # remove if DCGAN only
-#                 is_train=True, reuse=False)
-# _, disc_fake_image_logits  = discriminator_txt2img(net_fake_image.outputs,
-#                 rnn_embed(t_real_caption, is_train=True, reuse=True),    # remove if DCGAN only
-#                 is_train=True, reuse = False)
-# _, disc_real_image_logits = discriminator_txt2img(t_real_image,
-#                 rnn_embed(t_real_caption, is_train=True, reuse=True),    # remove if DCGAN only
-#                 is_train=True, reuse=True)
-# _, disc_wrong_image_logits = discriminator_txt2img(t_wrong_image,                 # remove if DCGAN only
-#                 rnn_embed(t_real_caption, is_train=True, reuse=True),     # remove if DCGAN only
-#                 is_train=True, reuse = True)                               # remove if DCGAN only
+g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.ones_like(disc_fake_image_logits))) # real == 1, fake == 0
 
-net_generator, _ = generator_dcgan(t_z, is_train=False, reuse=True)
-## testing inference for txt2img
-# net_generator, _ = generator_txt2img(t_z,
-#                 None, #rnn_embed(t_real_caption, is_train=False, reuse=True), # remove if DCGAN only
-#                 is_train=False, reuse=True)
-## testing inference for DCGAN
+d_loss1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real_image_logits, tf.ones_like(disc_real_image_logits)))
+d_loss2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_wrong_image_logits, tf.zeros_like(disc_wrong_image_logits)))
+d_loss3 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.zeros_like(disc_fake_image_logits)))
 
+d_loss = d_loss1 + d_loss2 + d_loss3
 
-## loss for DCGAN
-d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real_image_logits, tf.ones_like(disc_real_image_logits)))    # real == 1
-d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.zeros_like(disc_fake_image_logits)))     # fake == 0
-d_loss = d_loss_real + d_loss_fake
-g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.ones_like(disc_fake_image_logits)))
-
-## loss for txt2img
-# g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.ones_like(disc_fake_image_logits))) # real == 1, fake == 0
-#
-# d_loss1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real_image_logits, tf.ones_like(disc_real_image_logits)))
-# d_loss2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_wrong_image_logits, tf.zeros_like(disc_wrong_image_logits)))
-# d_loss3 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.zeros_like(disc_fake_image_logits)))
-#
-# d_loss = d_loss1 + d_loss2 + d_loss3
-
+## debug
+# check = rnn_embed(t_real_caption, is_train=True, reuse=True)
 
 net_fake_image.print_params(False)
 net_fake_image.print_layers()
@@ -326,13 +310,13 @@ net_fake_image.print_layers()
 ## Cost   real == 1, fake == 0
 lr = 0.0002
 beta1 = 0.5
-# e_vars = tl.layers.get_variables_with_name('rnn', True, True)           #  remove if DCGAN only
+e_vars = tl.layers.get_variables_with_name('rnn', True, True)
 g_vars = tl.layers.get_variables_with_name('discriminator', True, True)
 d_vars = tl.layers.get_variables_with_name('generator', True, True)
 
-d_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(d_loss, var_list=d_vars)# + e_vars)      # When should we update word embedding and rnn ?
-g_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=g_vars)# + e_vars)
-
+d_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(d_loss, var_list=d_vars )#+ e_vars)      # When should we update word embedding and rnn ?
+g_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=g_vars )#+ e_vars)
+# exit()
 ###============================ TRAINING ====================================###
 sess = tf.InteractiveSession()
 sess.run(tf.initialize_all_variables())
@@ -340,7 +324,7 @@ sess.run(tf.initialize_all_variables())
 # tl.ops.set_gpu_fraction(sess=sess, gpu_fraction=0.998)
 # sess.run(tf.initialize_all_variables())
 
-## seed for generation, z and sentence ids
+## seed to generate
 sample_size = batch_size
 sample_seed = np.random.uniform(low=-1, high=1, size=(sample_size, z_dim)).astype(np.float32)
 sample_sentence = ["this white and yellow flower have thin white petals and a round yellow stamen", \
@@ -362,41 +346,46 @@ for epoch in range(n_epoch):
         step_time = time.time()
         ## get real image + matched text
         idexs = generate_random_int(min=0, max=n_captions-1, number=batch_size)
-        # b_real_caption = captions_ids[idexs]                                                                      # remove if DCGAN only
-        # b_real_caption = tl.prepro.pad_sequences(b_real_caption, padding='post')     # matched text  (64, any)    # remove if DCGAN only
+        b_real_caption = captions_ids[idexs]
+        b_real_caption = tl.prepro.pad_sequences(b_real_caption, padding='post')                                            # matched text  (64, any)
         b_real_images = images[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real images   (64, 64, 64, 3)
-        ## get wrong caption
+        ## get mismatched text
         # idexs = generate_random_int(min=0, max=n_captions-1, number=batch_size)
-        # b_wrong_caption = captions_ids[idexs]
-        # b_wrong_caption = tl.prepro.pad_sequences(b_wrong_caption, padding='post')                                    # mismatched text
+        # b_seqs_mis = captions_ids[idexs]
+        # b_seqs_mis = tl.prepro.pad_sequences(b_seqs_mis, padding='post')                                    # mismatched text
         ## get wrong image
-        # idexs = generate_random_int(min=0, max=n_images-1, number=batch_size)        # remove if DCGAN only
-        # b_wrong_images = images[idexs]                                               # remove if DCGAN only
+        idexs = generate_random_int(min=0, max=n_images-1, number=batch_size)
+        b_wrong_images = images[idexs]
+        # idexs = generate_random_int(min=0, max=n_images-1, number=batch_size)
+        # b_images_mis = images[idexs]
         ## get noise
-        b_z = np.random.uniform(low=-1, high=1, size=[batch_size, z_dim]).astype(np.float32)       # float64-->float32
+        b_z = np.random.uniform(low=-1, high=1, size=[batch_size, z_dim])#.astype(np.float32)                # noise  (64, 100)
         ## check data
-        # print(np.min(b_real_images), np.max(b_real_images), b_real_images.shape)    # [0, 1] (64, 64, 64, 3)
-        # for i, seq in enumerate(b_real_caption):
+        # for i, seq in enumerate(b_seqs):
         #     print(seq)
         #     print(" ".join([vocab.id_to_word(id) for id in seq]))
         # exit()
-
         ## updates the discriminator
-        # for _ in range(10):
-        b_real_images = threading_data(b_real_images, flip_axis, axis=1, is_random=True)   # random flip left and right    # https://github.com/paarthneekhara/text-to-image/blob/master/Utils/image_processing.py
+        # for _ in range(200):
         errD, _ = sess.run([d_loss, d_optim], feed_dict={
                         t_real_image : b_real_images,
-                        # t_wrong_image : b_wrong_images,     # remove if DCGAN only
-                        # t_real_caption : b_real_caption,    # remove if DCGAN only
+                        t_wrong_image : b_wrong_images,
+                        t_real_caption : b_real_caption,
                         t_z : b_z})
         # if epoch % 5 == 0:   # Hao : skip training G
             ## updates the generator
-        # for _ in range(2):
         errG, _ = sess.run([g_loss, g_optim], feed_dict={
                         # t_real_image : b_real_images,
                         # t_wrong_image : b_wrong_images,
-                        # t_real_caption : b_real_caption,    # remove if DCGAN only
+                        t_real_caption : b_real_caption,
                         t_z : b_z})
+
+        # print(sess.run(check.outputs, feed_dict={t_real_caption : b_real_caption}))
+
+        ## check
+        # errG, _, sl = sess.run([g_loss, g_optim, net_reduced_text.sequence_length], feed_dict={input_z: b_z, input_seqs: b_seqs})
+        # print(sl)
+        # exit()
 
         print("Epoch: [%2d/%2d] [%4d/%4d] time: %4.4fs, d_loss: %.8f, g_loss: %.8f" \
                     % (epoch, n_epoch, step, n_batch_epoch, time.time() - step_time, errD, errG))
@@ -406,13 +395,8 @@ for epoch in range(n_epoch):
 
     if (epoch + 1) % print_freq == 0:
         print(" ** Epoch %d took %fs" % (epoch, time.time()-start_time))
-        img_gen = sess.run(net_generator.outputs, feed_dict={t_z: sample_seed,
-                                                    # t_real_caption: sample_sentence  # remove if DCGAN only
-                                                    })
-        # print(b_real_images[0])
-        print('real:',b_real_images[0].shape, np.min(b_real_images[0]), np.max(b_real_images[0]))
-        # print(img_gen[0])
-        print('generate:',img_gen[0].shape, np.min(img_gen[0]), np.max(img_gen[0]))
+        # img_gen = sess.run(net_g2.outputs, feed_dict={input_z: sample_seed, input_seqs: sample_sentence})
+        img_gen = sess.run(net_generator.outputs, feed_dict={t_z: sample_seed, t_real_caption: sample_sentence})
         tl.visualize.frame(img_gen[0], second=0, saveable=True, name='e_%d_%s' % (epoch, " ".join([vocab.id_to_word(id) for id in sample_sentence[0]])) )
         # for i, img in enumerate(img_gen):
         #     tl.visualize.frame(img, second=0, saveable=True, name='epoch_%d_sample_%d_%s' % (epoch, i, [vocab.id_to_word(id) for id in sample_sentence[i]]) )

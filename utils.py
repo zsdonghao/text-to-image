@@ -1,6 +1,8 @@
 import tensorflow as tf
 import os
 import random
+import scipy
+import numpy as np
 
 """ The functions here will be merged into TensorLayer after finishing this project.
 """
@@ -20,7 +22,7 @@ def load_folder_list(path=""):
 
 #utils
 def print_dict(dictionary={}):
-    """Print all key and item of a dictionary.
+    """Print all keys and items in a dictionary.
     """
     for key, value in dictionary.iteritems():
         print("key: %s  value: %s" % (str(key), str(value)))
@@ -28,7 +30,7 @@ def print_dict(dictionary={}):
 
 #prepro ?
 def generate_random_int(min=0, max=10, number=5):
-    """Return a list of random integer by given range and the number.
+    """Return a list of random integer by the given range and quantity.
 
     Examples
     ---------
@@ -37,25 +39,39 @@ def generate_random_int(min=0, max=10, number=5):
     """
     return [random.randint(min,max) for p in range(0,number)]
 
+def merge(images, size):
+    h, w = images.shape[1], images.shape[2]
+    img = np.zeros((h * size[0], w * size[1], 3))
+    for idx, image in enumerate(images):
+        i = idx % size[1]
+        j = idx // size[1]
+        img[j*h:j*h+h, i*w:i*w+w, :] = image
+    return img
 
+def imsave(images, size, path):
+    return scipy.misc.imsave(path, merge(images, size))
 
-#utils ?
-def list_remove_repeat(l=[]):
-    """Remove the repeated items in a list, and return the processed list.
+def save_images(images, size, image_path):
+    #  save_images(img, [8, 8], './{}/train_{:02d}_{:04d}.png'.format(FLAGS.sample_dir, epoch, idx))
+    return imsave(inverse_transform(images), size, image_path)
 
-    Parameters
-    ----------
-    l : a list
-
-    Examples
-    ---------
-    >>> l = [2, 3, 4, 2, 3]
-    >>> l = list_remove_repeat(l)
-    ... [2, 3, 4]
-    """
-    l2 = []
-    [l2.append(i) for i in l if not i in l2]
-    return l2
+# layers helper functon
+# def list_remove_repeat(l=[]):
+#     """Remove the repeated items in a list, and return the processed list.
+#
+#     Parameters
+#     ----------
+#     l : a list
+#
+#     Examples
+#     ---------
+#     >>> l = [2, 3, 4, 2, 3]
+#     >>> l = list_remove_repeat(l)
+#     ... [2, 3, 4]
+#     """
+#     l2 = []
+#     [l2.append(i) for i in l if not i in l2]
+#     return l2
 
 
 #layers Name Scope Functions
