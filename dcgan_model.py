@@ -41,8 +41,8 @@ def generator_dcgan(inputs, is_train=True, reuse=False):
         net_h4 = DeConv2d(net_h3, c_dim, (5, 5), out_size=(image_size, image_size), strides=(2, 2),
                 padding='SAME', batch_size=batch_size, act=None, W_init=w_init, name='g/h4/decon2d')
         logits = net_h4.outputs
-        # net_h4.outputs = tf.nn.tanh(net_h4.outputs)
-        net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)
+        net_h4.outputs = tf.nn.tanh(net_h4.outputs)
+        # net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)
     return net_h4, logits
 
 

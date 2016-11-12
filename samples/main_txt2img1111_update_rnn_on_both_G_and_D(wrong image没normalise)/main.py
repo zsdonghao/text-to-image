@@ -115,7 +115,7 @@ if True:
 ###======================== DEFIINE MODEL ===================================###
 batch_size = 64
 vocab_size = 8000
-word_embedding_size = 512    # Hao, it was 256
+word_embedding_size = 256    # Hao
 z_dim = 100         # Noise dimension
 t_dim = 256 /2        # Text feature dimension # paper said 128
 image_size = 64     # 64 x 64
@@ -125,7 +125,7 @@ df_dim = 64         # Number of conv in the first layer discriminator 64
 # gfc_dim = 1024      # Dimension of gen untis for for fully connected layer 1024
 # caption_vector_length = 2400 # Caption Vector Length 2400   Hao : I use word-based dynamic_rnn
 
-print("n_captions: %d n_images: %d batch_size: %d n_captions_per_image: %d" % (n_captions, n_images, batch_size, n_captions_per_image))
+print("n_captions: %d batch_size: %d n_captions_per_image: %d" % (n_captions, batch_size, n_captions_per_image))
 
 # ## generate a random batch
 # idexs = generate_random_int(0, n_captions, batch_size)
@@ -141,11 +141,6 @@ print("n_captions: %d n_images: %d batch_size: %d n_captions_per_image: %d" % (n
 #     print([vocab.id_to_word(id) for id in ids])
 # print(np.max(b_images), np.min(b_images), b_images.shape)
 # tl.visualize.images2d(b_images, second=5, saveable=True, name='temp2')
-# exit()
-
-# save_images(images[:64], [8, 8], 'temp.png')
-# flip_img = threading_data(images[:64], prepro_img, mode='debug')
-# save_images(flip_img, [8, 8], 'temp2.png')
 # exit()
 
 
@@ -177,7 +172,8 @@ def rnn_embed(input_seqs, is_train, reuse):
     return network
 
 def generator_txt2img(input_z, net_rnn_embed=None, is_train=True, reuse=False):
-    # IMPLEMENTATION based on : https://github.com/paarthneekhara/text-to-image/blob/master/model.py
+    """IMPLEMENTATION based on : https://github.com/paarthneekhara/text-to-image/blob/master/model.py
+    """
     s = image_size
     s2, s4, s8, s16 = int(s/2), int(s/4), int(s/8), int(s/16)
 
@@ -189,16 +185,16 @@ def generator_txt2img(input_z, net_rnn_embed=None, is_train=True, reuse=False):
         net_input_z = InputLayer(input_z, name='g_inputz')
 
         if net_rnn_embed is not None:
-            # paper 4.1 : the discription embedding is first compressed using a FC layer to small dim (128), followed by leaky-Relu
+            # paper : reduce the dim of description embedding in (seperate) FC layer followed by rectification
             net_reduced_text = DenseLayer(net_rnn_embed, n_units=t_dim, act= lambda x: tl.act.lrelu(x, 0.2),  # local reduce_txt, remove if reduce_txt in rnn_embed
                     W_init = w_init, name='g_reduce_text/dense')                                              # local reduce_txt, remove if reduce_txt in rnn_embed
             # net_reduced_text = net_rnn_embed  # if reduce_txt in rnn_embed
-            # paper 4.1 : and then concatenated to the noise vector z
-            net_input_z = ConcatLayer([net_input_z, net_reduced_text], concat_dim=1, name='g_concat_z_seq')
+            net_z_concat = ConcatLayer([net_input_z, net_reduced_text], concat_dim=1, name='g_concat_z_seq')
         else:
             print("No text info will be used, i.e. normal DCGAN")
+            net_z_concat = net_input_z
 
-        net_h0 = DenseLayer(net_input_z, gf_dim*8*s16*s16,
+        net_h0 = DenseLayer(net_z_concat, gf_dim*8*s16*s16,
                 act = tf.identity, W_init = w_init, name='g_h0/dense')                  # (64, 8192)
         net_h0 = ReshapeLayer(net_h0, [-1, s16, s16, gf_dim*8], name='g_h0/reshape')
         net_h0 = BatchNormLayer(net_h0, act=tf.nn.relu, is_train=is_train,
@@ -227,7 +223,8 @@ def generator_txt2img(input_z, net_rnn_embed=None, is_train=True, reuse=False):
     return net_h4, logits
 
 def discriminator_txt2img(input_images, net_rnn_embed=None, is_train=True, reuse=False):
-    # IMPLEMENTATION based on : https://github.com/paarthneekhara/text-to-image/blob/master/model.py
+    """IMPLEMENTATION based on : https://github.com/paarthneekhara/text-to-image/blob/master/model.py
+    """
     w_init = tf.random_normal_initializer(stddev=0.02)
     gamma_init=tf.random_normal_initializer(1., 0.02)
     with tf.variable_scope("discriminator", reuse=reuse):
@@ -249,7 +246,7 @@ def discriminator_txt2img(input_images, net_rnn_embed=None, is_train=True, reuse
 
         net_h3 = Conv2d(net_h2, df_dim*8, (5, 5), (2, 2), padding='SAME', W_init=w_init, name='d_h3/conv2d')
         net_h3 = BatchNormLayer(net_h3, act=lambda x: tl.act.lrelu(x, 0.2),
-                is_train=is_train, gamma_init=gamma_init, name='d_h3/batchnorm') # (64, 4, 4, 512)  paper 4.1: when the spatial dim of the D is 4x4, we replicate the description embedding spatially and perform a depth concatenation
+                is_train=is_train, gamma_init=gamma_init, name='d_h3/batchnorm') # (64, 4, 4, 512)
 
         if net_rnn_embed is not None:
             # paper : reduce the dim of description embedding in (seperate) FC layer followed by rectification
@@ -262,7 +259,7 @@ def discriminator_txt2img(input_images, net_rnn_embed=None, is_train=True, reuse
 
             net_h3_concat = ConcatLayer([net_h3, net_reduced_text], concat_dim=3, name='d_h3_concat') # (64, 4, 4, 640)
             # net_h3_concat = net_h3 # no text info
-            net_h3 = Conv2d(net_h3_concat, df_dim*8, (1, 1), (1, 1), padding='SAME', W_init=w_init, name='d_h3/conv2d_2')   # paper 4.1: perform 1x1 conv followed by rectification and a 4x4 conv to compute the final score from D
+            net_h3 = Conv2d(net_h3_concat, df_dim*8, (1, 1), (1, 1), padding='SAME', W_init=w_init, name='d_h3/conv2d_2')
             net_h3 = BatchNormLayer(net_h3, act=lambda x: tl.act.lrelu(x, 0.2),
                     is_train=is_train, gamma_init=gamma_init, name='d_h3/batch_norm_2') # (64, 4, 4, 512)
         else:
@@ -293,18 +290,18 @@ t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
 # _, disc_fake_image_logits = discriminator_dcgan(net_fake_image.outputs, is_train=True, reuse=False)
 # _, disc_real_image_logits = discriminator_dcgan(t_real_image, is_train=True, reuse=True)
 ## training inference for txt2img
-net_real_caption = rnn_embed(t_real_caption, is_train=True, reuse=False)   # remove if DCGAN only
+net_read_caption = rnn_embed(t_real_caption, is_train=True, reuse=False)   # remove if DCGAN only
 net_fake_image, _ = generator_txt2img(t_z,
-                net_real_caption,                                       # remove if DCGAN only
+                net_read_caption,                                       # remove if DCGAN only
                 is_train=True, reuse=False)
 _, disc_fake_image_logits  = discriminator_txt2img(net_fake_image.outputs,
-                net_real_caption,                                       # remove if DCGAN only
+                net_read_caption,                                       # remove if DCGAN only
                 is_train=True, reuse=False)
 _, disc_real_image_logits = discriminator_txt2img(t_real_image,
-                net_real_caption,                                          # remove if DCGAN only
+                net_read_caption,                                          # remove if DCGAN only
                 is_train=True, reuse=True)
 _, disc_wrong_image_logits = discriminator_txt2img(t_wrong_image,                 # remove if DCGAN only
-                net_real_caption,                                            # remove if DCGAN only
+                net_read_caption,                                            # remove if DCGAN only
                 is_train=True, reuse=True)                               # remove if DCGAN only
 
 ## testing inference for DCGAN
@@ -343,12 +340,12 @@ d_vars = tl.layers.get_variables_with_name('discriminator', True, True)
 g_vars = tl.layers.get_variables_with_name('generator', True, True)
 
 ## When should we update word embedding and rnn ?
-# update rnn in both D and G:
-# update rnn only in G:
-# update rnn only in D:
+# update rnn in both D and G, ouput blurred flower but didn't match with txt yet
+# update rnn only in G, output nothing but noise
+# update rnn only in D, output visible image but don't match with text, low d_loss and high g_loss
 ## clip_grads for RNN ?
 d_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(d_loss, var_list=d_vars + e_vars)
-g_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=g_vars )#+ e_vars)
+g_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=g_vars + e_vars)
 
 ###============================ TRAINING ====================================###
 sess = tf.InteractiveSession()
@@ -360,18 +357,16 @@ sess.run(tf.initialize_all_variables())
 ## seed for generation, z and sentence ids
 sample_size = batch_size
 sample_seed = np.random.uniform(low=-1, high=1, size=(sample_size, z_dim)).astype(np.float32)               # paper said [0, 1]
-# sample_sentence = ["this white and yellow flower have thin white petals and a round yellow stamen", \
-#                     "the flower has petals that are bright pinkish purple with white stigma"] * 32
-sample_sentence = ["these flowers have petals that start off white in color and end in a dark purple towards the tips", \
-                    "bright droopy yellow petals with burgundy streaks and a yellow stigma"] * 32
+sample_sentence = ["this white and yellow flower have thin white petals and a round yellow stamen", \
+                    "the flower has petals that are bright pinkish purple with white stigma"] * 32
 for i, sentence in enumerate(sample_sentence):
     # sample_sentence[i] = tl.nlp.process_sentence(sentence, start_word=None, end_word=None)
     sample_sentence[i] = [vocab.word_to_id(word) for word in nltk.tokenize.word_tokenize(sentence)]
-    print(sentence)
+    # print(sentence)
     # print(sample_sentence[i])
 sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
 
-n_epoch = 1000   # 600 when pre-trained rnn
+n_epoch = 600   # 600 when pre-trained rnn
 print_freq = 1
 n_batch_epoch = int(n_images / batch_size)
 for epoch in range(n_epoch):
@@ -379,19 +374,18 @@ for epoch in range(n_epoch):
     train_loss = 0
     for step in range(n_batch_epoch):
         step_time = time.time()
-        ## get matched text
+        ## get real image + matched text
         idexs = generate_random_int(min=0, max=n_captions-1, number=batch_size)
         b_real_caption = captions_ids[idexs]                                                                      # remove if DCGAN only
         b_real_caption = tl.prepro.pad_sequences(b_real_caption, padding='post')     # matched text  (64, any)    # remove if DCGAN only
-        ## get real image
         b_real_images = images[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real images   (64, 64, 64, 3)
         ## get wrong caption
         # idexs = generate_random_int(min=0, max=n_captions-1, number=batch_size)
         # b_wrong_caption = captions_ids[idexs]
         # b_wrong_caption = tl.prepro.pad_sequences(b_wrong_caption, padding='post')                                    # mismatched text
         ## get wrong image
-        idexs2 = generate_random_int(min=0, max=n_images-1, number=batch_size)        # remove if DCGAN only
-        b_wrong_images = images[idexs2]                                               # remove if DCGAN only
+        idexs = generate_random_int(min=0, max=n_images-1, number=batch_size)        # remove if DCGAN only
+        b_wrong_images = images[idexs]                                               # remove if DCGAN only
         ## get noise
         b_z = np.random.uniform(low=-1, high=1, size=[batch_size, z_dim]).astype(np.float32)       # paper said [0, 1]
         ## check data
@@ -399,20 +393,22 @@ for epoch in range(n_epoch):
         # for i, seq in enumerate(b_real_caption):
         #     print(seq)
         #     print(" ".join([vocab.id_to_word(id) for id in seq]))
-        # save_images(b_real_images, [8, 8], 'real_image.png')
         # exit()
 
-        ## updates D
+        ## updates the discriminator
+        # for _ in range(10):
         b_real_images = threading_data(b_real_images, prepro_img, mode='train')   # random flip left and right    # https://github.com/paarthneekhara/text-to-image/blob/master/Utils/image_processing.py
-        b_wrong_images = threading_data(b_wrong_images, prepro_img, mode='train')
         errD, _ = sess.run([d_loss, d_optim], feed_dict={
                         t_real_image : b_real_images,
                         t_wrong_image : b_wrong_images,     # remove if DCGAN only
                         t_real_caption : b_real_caption,    # remove if DCGAN only
                         t_z : b_z})
-        ## updates G
+        # if epoch % 5 == 0:   # Hao : skip training G
+            ## updates the generator
         for _ in range(2):
             errG, _ = sess.run([g_loss, g_optim], feed_dict={
+                            # t_real_image : b_real_images,
+                            # t_wrong_image : b_wrong_images,
                             t_real_caption : b_real_caption,    # remove if DCGAN only
                             t_z : b_z})
 
@@ -429,7 +425,6 @@ for epoch in range(n_epoch):
                                                     })
         # print(b_real_images[0])
         print('real:', b_real_images[0].shape, np.min(b_real_images[0]), np.max(b_real_images[0]))
-        print('wrong:', b_wrong_images[0].shape, np.min(b_wrong_images[0]), np.max(b_wrong_images[0]))
         # print(img_gen[0])
         print('generate:', img_gen[0].shape, np.min(img_gen[0]), np.max(img_gen[0]))
         img_gen = threading_data(img_gen, prepro_img, mode='rescale')
