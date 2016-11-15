@@ -37,7 +37,7 @@ def generate_random_int(min=0, max=10, number=5):
     return [random.randint(min,max) for p in range(0,number)]
 
 from tensorlayer.prepro import *
-def prepro_img(x, mode='train'):
+def prepro_img(x, mode=None):
     if mode=='train':   # [0, 255] --> (-1, 1), random flip left and right
         x = x / (255. / 2.)
         x = x - 1.
