@@ -171,19 +171,7 @@ df_dim = 64         # Number of conv in the first layer discriminator 64
 # save_images(flip_img, [8, 8], 'temp2.png')
 # exit()
 
-from tensorlayer.prepro import *
-def prepro_img(x, mode=None):
-    if mode=='train':   # [0, 255] --> (-1, 1), random flip left and right
-        x = x / (255. / 2.)
-        x = x - 1.
-        # x = flip_axis(x, axis=1, is_random=True)
-    elif mode=='rescale':  # (-1, 1) --> (0, 1)
-        x = (x + 1.) / 2.
-    elif mode=='debug':
-        x = flip_axis(x, axis=1, is_random=True)
-    else:
-        raise Exception("Not support : %s" % mode)
-    return x
+
 
 def rnn_embed(input_seqs, is_train, reuse):
     """MY IMPLEMENTATION, same weights for the Word Embedding and RNN in the discriminator and generator.
@@ -206,7 +194,7 @@ def rnn_embed(input_seqs, is_train, reuse):
                      sequence_length = tl.layers.retrieve_seq_length_op2(input_seqs),
                      return_last = True,
                      name = 'dynamic')
-        # paper 4.1: reduce the dim of description embedding in (seperate) FC layer followed by rectification
+        # G and D share the same dense layer for reduce_txt, but # paper : reduce the dim of description embedding in (seperate) FC layer followed by rectification
         # network = DenseLayer(network, n_units=t_dim,
         #         act=lambda x: tl.act.lrelu(x, 0.2), W_init=w_init, name='reduce_txt/dense')
     return network
@@ -475,7 +463,7 @@ g_vars = tl.layers.get_variables_with_name('generator', True, True)
 #   update G 3 times per batch          300 epoch d_loss: 0.35285434, g_loss: 4.30621910        g_loss still increase
 #   change lr to 2e-5                   images under a caption look the same                    g_loss still increase
 #   l2=1e-4, update G 5 times           images under a caption look the same
-#   set net_rnn_embed(is_train=False) , no random filp          100 epoch: good, 200 epoch: images under a caption look the same, g_loss still increase
+#   set net_rnn_embed(is_train=False) , no random filp  
 
 # grads = tf.gradients(d_loss, d_vars + e_vars)
 # grads, _ = tf.clip_by_global_norm(tf.gradients(d_loss, d_vars + e_vars), 30)
@@ -570,7 +558,7 @@ for epoch in range(n_epoch):
         # exit()
 
         ## updates D
-        b_real_images = threading_data(b_real_images, prepro_img, mode='train')   # [0, 255] --> [-1, 1]
+        b_real_images = threading_data(b_real_images, prepro_img, mode='train')   # random flip left and right    # https://github.com/paarthneekhara/text-to-image/blob/master/Utils/image_processing.py
         b_wrong_images = threading_data(b_wrong_images, prepro_img, mode='train')
         errD, _ = sess.run([d_loss, d_optim], feed_dict={
                         t_real_image : b_real_images,
@@ -603,7 +591,7 @@ for epoch in range(n_epoch):
         print('wrong:', b_wrong_images[0].shape, np.min(b_wrong_images[0]), np.max(b_wrong_images[0]))
         # print(img_gen[0])
         print('generate:', img_gen[0].shape, np.min(img_gen[0]), np.max(img_gen[0]))
-        img_gen = threading_data(img_gen, prepro_img, mode='rescale')   # [-1, 1] --> [0, 1]
+        img_gen = threading_data(img_gen, prepro_img, mode='rescale')
         # tl.visualize.frame(img_gen[0], second=0, saveable=True, name='e_%d_%s' % (epoch, " ".join([vocab.id_to_word(id) for id in sample_sentence[0]])) )
         save_images(img_gen, [8, 8], '{}/train_{:02d}.png'.format('samples', epoch))
         # for i, img in enumerate(img_gen):
