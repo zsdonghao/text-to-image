@@ -1,7 +1,7 @@
-# Text To Image Synthesis
+# Text To Image Synthesis (Developing)
 
 
-This is an experimental tensorflow implementation of synthesizing images. The images are synthesized using the GAN-CLS Algorithm from the paper [Generative Adversarial Text-to-Image Synthesis][2]. This implementation is built on top of the excellent [DCGAN in Tensorflow][3]. The following is the model architecture. The blue bars represent the Skip Thought Vectors for the captions.
+This is an experimental tensorflow implementation of synthesizing images. The images are synthesized using the GAN-CLS Algorithm from the paper [Generative Adversarial Text-to-Image Synthesis][2]. This implementation is built on top of the excellent [DCGAN in Tensorflow][3]. The following is the model architecture.
 
 ![Model architecture](http://i.imgur.com/dNl2HkZ.jpg)
 
@@ -13,7 +13,7 @@ Image Source : [Generative Adversarial Text-to-Image Synthesis][2] Paper
 - [NLTK][8] : for tokenizer
 
 ## Datasets
-- The model is currently trained on the [flowers dataset][9]. Download the images from [this link][9] and save them in ```102flowers/102flowers/*.jpg```. Also download the captions from [this link][10]. Extract the archive, copy the ```text_c10``` folder and paste it in ```102flowers/text_c10/class_*```.
+- The model is currently trained on the [flowers dataset][9]. Download the images from [here][9] and save them in ```102flowers/102flowers/*.jpg```. Also download the captions from [this link][10]. Extract the archive, copy the ```text_c10``` folder and paste it in ```102flowers/text_c10/class_*```.
 
 ## Codes
 - `train_dcgan.py` use DCGAN to generate new images.
