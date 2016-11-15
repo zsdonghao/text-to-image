@@ -119,7 +119,7 @@ if True:
     print("n_images_test:%d  n_captions_test:%d" % (n_images_test, n_captions_test))
 
     ## check test image
-    # idexs = generate_random_int(min=0, max=n_captions_test-1, number=64)
+    # idexs = get_random_int(min=0, max=n_captions_test-1, number=64)
     # temp_test_capt = captions_ids_test[idexs]
     # for idx, ids in enumerate(temp_test_capt):
     #     print("%d %s" % (idx, [vocab.id_to_word(id) for id in ids]))
@@ -151,7 +151,7 @@ df_dim = 64         # Number of conv in the first layer discriminator 64
 # caption_vector_length = 2400 # Caption Vector Length 2400   Hao : I use word-based dynamic_rnn
 
 # ## generate a random batch
-# idexs = generate_random_int(0, n_captions, batch_size)
+# idexs = get_random_int(0, n_captions, batch_size)
 # idexs = [i for i in range(0,100)]
 # print(idexs)
 # b_seqs = captions_ids[idexs]
@@ -533,17 +533,17 @@ for epoch in range(n_epoch):
     for step in range(n_batch_epoch):
         step_time = time.time()
         ## get matched text
-        idexs = generate_random_int(min=0, max=n_captions_train-1, number=batch_size)
+        idexs = get_random_int(min=0, max=n_captions_train-1, number=batch_size)
         b_real_caption = captions_ids_train[idexs]                                                                      # remove if DCGAN only
         b_real_caption = tl.prepro.pad_sequences(b_real_caption, padding='post')     # matched text  (64, any)    # remove if DCGAN only
         ## get real image
         b_real_images = images_train[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real images   (64, 64, 64, 3)
         ## get wrong caption
-        # idexs = generate_random_int(min=0, max=n_captions-1, number=batch_size)
+        # idexs = get_random_int(min=0, max=n_captions-1, number=batch_size)
         # b_wrong_caption = captions_ids[idexs]
         # b_wrong_caption = tl.prepro.pad_sequences(b_wrong_caption, padding='post')                                    # mismatched text
         ## get wrong image
-        idexs2 = generate_random_int(min=0, max=n_images_train-1, number=batch_size)        # remove if DCGAN only
+        idexs2 = get_random_int(min=0, max=n_images_train-1, number=batch_size)        # remove if DCGAN only
         b_wrong_images = images_train[idexs2]                                               # remove if DCGAN only
         ## get noise
         b_z = np.random.uniform(low=-1, high=1, size=[batch_size, z_dim]).astype(np.float32)       # paper said [0, 1], but [-1, 1] is better

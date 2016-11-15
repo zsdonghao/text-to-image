@@ -278,14 +278,14 @@ def main(_):
 
     iter_counter = 0
     for epoch in range(FLAGS.epoch):
-        idexs = generate_random_int(min=0, max=n_captions-1, number=FLAGS.batch_size)
+        idexs = get_random_int(min=0, max=n_captions-1, number=FLAGS.batch_size)
         sample_images = images[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]
         print("[*]Sample images updated!")
 
         batch_idxs = int(n_images / FLAGS.batch_size)
 
         for idx in xrange(0, batch_idxs):
-            idexs = generate_random_int(min=0, max=n_captions-1, number=FLAGS.batch_size)
+            idexs = get_random_int(min=0, max=n_captions-1, number=FLAGS.batch_size)
             batch_images = images[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]
             batch_images = threading_data(batch_images, prepro_img, mode='train')
             batch_z = np.random.uniform(low=-1, high=1, size=(FLAGS.batch_size, z_dim)).astype(np.float32)

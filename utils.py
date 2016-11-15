@@ -26,12 +26,12 @@ def print_dict(dictionary={}):
         print("key: %s  value: %s" % (str(key), str(value)))
 
 #prepro ?
-def generate_random_int(min=0, max=10, number=5):
+def get_random_int(min=0, max=10, number=5):
     """Return a list of random integer by the given range and quantity.
 
     Examples
     ---------
-    >>> r = generate_random_int(min=0, max=10, number=5)
+    >>> r = get_random_int(min=0, max=10, number=5)
     ... [10, 2, 3, 3, 7]
     """
     return [random.randint(min,max) for p in range(0,number)]

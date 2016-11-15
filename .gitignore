@@ -1,0 +1,10 @@
+checkpoint/*
+102flowers/*
+cub_birds_200_2011/*
+tensorlayer/*
+*.txt
+*.png
+*.pdf
+*.pyc
+.DS_Store
+._*

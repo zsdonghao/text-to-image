@@ -15,6 +15,11 @@ Image Source : [Generative Adversarial Text-to-Image Synthesis][2] Paper
 ## Datasets
 - The model is currently trained on the [flowers dataset][9]. Download the images from [this link][9] and save them in ```102flowers/102flowers/*.jpg```. Also download the captions from [this link][10]. Extract the archive, copy the ```text_c10``` folder and paste it in ```102flowers/text_c10/class_*```.
 
+## Codes
+- `train_dcgan.py` use DCGAN to generate new images.
+- `train_txt2im.py` use GAN-CLS to generate new images from text.
+- `utils.py` helper functions.
+
 
 ## References
 - [Generative Adversarial Text-to-Image Synthesis][2] Paper
@@ -23,6 +28,9 @@ Image Source : [Generative Adversarial Text-to-Image Synthesis][2] Paper
 - [Skip Thought Vectors][12] Code
 - [Generative Adversarial Text-to-Image Synthesis with Skip Thought Vectors](https://github.com/paarthneekhara/text-to-image) TensorFlow code
 - [DCGAN in Tensorflow][3]
+
+## Credits
+
 
 ## License
 Apache 2.0
