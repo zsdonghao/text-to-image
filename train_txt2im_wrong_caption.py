@@ -207,10 +207,10 @@ t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
 # _, disc_real_image_logits = discriminator_dcgan(t_real_image, is_train=True, reuse=True)
 ## training inference for txt2img
 # net_rnn = rnn_embed(t_real_caption, is_train=True, reuse=False)   # remove if DCGAN only
-is_train_rnn = True
-net_rnn = rnn_embed(t_real_caption, is_train=is_train_rnn, reuse=False)    # if pre-trained
+net_rnn = rnn_embed(t_real_caption, is_train=True, reuse=False)    # if pre-trained
 net_fake_image, _ = generator_txt2img(t_z,
-                net_rnn,                                       # remove if DCGAN only
+                # net_rnn,                                       # remove if DCGAN only
+                rnn_embed(t_real_caption, is_train=False, reuse=True), # <- don't update RNN in G
                 is_train=True, reuse=False)
 net_d, disc_fake_image_logits = discriminator_txt2img(
                 net_fake_image.outputs,
@@ -226,9 +226,8 @@ _, disc_real_image_logits = discriminator_txt2img(
 #                 is_train=True, reuse=True)                               # remove if DCGAN only
 _, disc_wrong_caption_logits = discriminator_txt2img(
                 t_real_image,
-                rnn_embed(t_wrong_caption, is_train=is_train_rnn, reuse=True),                                          # remove if DCGAN only
+                rnn_embed(t_wrong_caption, is_train=True, reuse=True),                                          # remove if DCGAN only
                 is_train=True, reuse=True)
-
 
 ## testing inference for DCGAN
 # net_g, _ = generator_dcgan(t_z, is_train=False, reuse=True)
@@ -267,7 +266,7 @@ g_vars = tl.layers.get_variables_with_name('generator', True, True)
 
 ## results
 # update rnn in both D and G: 700 epochs lr=2e-4 d_loss: 0.09966065, g_loss: 3.55960941     Hao : don't update RNN and G together, G is cheat D
-# update rnn only in G:
+# update rnn only in G: wrong!
 # update rnn only in D:
 #   1000 epochs lr=2e-4 beta1=0.5           d_loss: 0.00363965, g_loss: 10.59220123  (at the begining, it work, but finially g_loss increase, RNN overfit?)
 #   500  epochs lr=1e-4 beta1=0.9 rnn 512   d_loss: 0.03315957, g_loss: 5.69525194   (at 100 epochs, it is correct ! but sometime turn to incorrect color.)
@@ -284,6 +283,8 @@ g_vars = tl.layers.get_variables_with_name('generator', True, True)
 #   size=200 dp=0.8         look the same ?
 # no pre-trained RNN, update RNN only in G and D:
 #   size=512 dp=0.5
+# update RNN with D only: 20161121
+#   lr = lr_rnn = 2e-4, no RNN dropout in G: 100epoch d_loss 0.5,0.8,1.2  g_loss 0.9,1.2,2,  150epoch d_loss 0.3,0.7,1.3  g_loss 0.6,1.3,3
 
 # grads = tf.gradients(d_loss, d_vars + e_vars)
 # grads, _ = tf.clip_by_global_norm(tf.gradients(d_loss, d_vars + e_vars), 30)
@@ -302,29 +303,29 @@ g_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=g_va
 sess = tf.InteractiveSession()
 sess.run(tf.initialize_all_variables())
 
-# save_dir = "checkpoint"
-# if not os.path.exists(save_dir):
-#     print("[!] Folder %s is not exist, create it." % save_dir)
-#     os.mkdir(save_dir)
-# # load the latest checkpoints
-# net_e_name = os.path.join(save_dir, 'net_e.npz')
-# net_g_name = os.path.join(save_dir, 'net_g.npz')
-# net_d_name = os.path.join(save_dir, 'net_d.npz')
-# if not os.path.exists(net_e_name):
-#     print("[!] Loading RNN checkpoints failed!")
-# else:
-#     net_e_loaded_params = tl.files.load_npz(name=net_e_name)
-#     tl.files.assign_params(sess, net_e_loaded_params, net_rnn)
-#     print("[*] Loading RNN checkpoints SUCCESS!")
+save_dir = "checkpoint"
+if not os.path.exists(save_dir):
+    print("[!] Folder %s is not exist, create it." % save_dir)
+    os.mkdir(save_dir)
+# load the latest checkpoints
+net_e_name = os.path.join(save_dir, 'net_e.npz')
+net_g_name = os.path.join(save_dir, 'net_g.npz')
+net_d_name = os.path.join(save_dir, 'net_d.npz')
+if not os.path.exists(net_e_name):
+    print("[!] Loading RNN checkpoints failed!")
+else:
+    net_e_loaded_params = tl.files.load_npz(name=net_e_name)
+    tl.files.assign_params(sess, net_e_loaded_params, net_rnn)
+    print("[*] Loading RNN checkpoints SUCCESS!")
 
-# if not (os.path.exists(net_g_name) and os.path.exists(net_d_name)):
-#     print("[!] Loading G and D checkpoints failed!")
-# else:
-#     net_g_loaded_params = tl.files.load_npz(name=net_g_name)
-#     net_d_loaded_params = tl.files.load_npz(name=net_d_name)
-#     tl.files.assign_params(sess, net_g_loaded_params, net_g)
-#     tl.files.assign_params(sess, net_d_loaded_params, net_d)
-#     print("[*] Loading G and D checkpoints SUCCESS!")
+if not (os.path.exists(net_g_name) and os.path.exists(net_d_name)):
+    print("[!] Loading G and D checkpoints failed!")
+else:
+    net_g_loaded_params = tl.files.load_npz(name=net_g_name)
+    net_d_loaded_params = tl.files.load_npz(name=net_d_name)
+    tl.files.assign_params(sess, net_g_loaded_params, net_g)
+    tl.files.assign_params(sess, net_d_loaded_params, net_d)
+    print("[*] Loading G and D checkpoints SUCCESS!")
 
 # sess=tf.Session()
 # tl.ops.set_gpu_fraction(sess=sess, gpu_fraction=0.998)
@@ -332,7 +333,8 @@ sess.run(tf.initialize_all_variables())
 
 ## seed for generation, z and sentence ids
 sample_size = batch_size
-sample_seed = np.random.uniform(low=-1, high=1, size=(sample_size, z_dim)).astype(np.float32)        # paper said [0, 1]
+# sample_seed = np.random.uniform(low=-1, high=1, size=(sample_size, z_dim)).astype(np.float32)        # paper said [0, 1]
+sample_seed = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
 # sample_sentence = ["this white and yellow flower have thin white petals and a round yellow stamen", \
 #                     "the flower has petals that are bright pinkish purple with white stigma"] * 32
 # sample_sentence = ["these flowers have petals that start off white in color and end in a dark purple towards the tips"] * 32 + \
@@ -354,6 +356,7 @@ print_freq = 1
 n_batch_epoch = int(n_images / batch_size)
 for epoch in range(n_epoch):
     start_time = time.time()
+    total_d_loss, total_g_loss = 0, 0
     for step in range(n_batch_epoch):
         step_time = time.time()
         ## get matched text
@@ -370,7 +373,8 @@ for epoch in range(n_epoch):
         # idexs2 = get_random_int(min=0, max=n_images_train-1, number=batch_size)        # remove if DCGAN only
         # b_wrong_images = images_train[idexs2]                                               # remove if DCGAN only
         ## get noise
-        b_z = np.random.uniform(low=-1, high=1, size=[batch_size, z_dim]).astype(np.float32)       # paper said [0, 1], but [-1, 1] is better
+        # b_z = np.random.uniform(low=-1, high=1, size=[batch_size, z_dim]).astype(np.float32)       # paper said [0, 1], but [-1, 1] is better
+        b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
         ## check data
         # print(np.min(b_real_images), np.max(b_real_images), b_real_images.shape)    # [0, 1] (64, 64, 64, 3)
         # for i, seq in enumerate(b_real_caption):
@@ -402,6 +406,10 @@ for epoch in range(n_epoch):
 
     if (epoch + 1) % print_freq == 0:
         print(" ** Epoch %d took %fs" % (epoch, time.time()-start_time))
+        log = "     d d_loss: %.8f, g_loss: %.8f: " % (total_d_loss/n_batch_epoch, total_g_loss/n_batch_epoch)
+        print(log)
+        total_d_loss, total_g_loss = 0, 0
+
         img_gen, rnn_out = sess.run([net_g.outputs, net_rnn.outputs],
         # img_gen = sess.run(net_g.outputs,
                                     feed_dict={
@@ -428,17 +436,17 @@ for epoch in range(n_epoch):
         # save_images(b_real_images, [8, 8], 'temp_real_image.png')
         # save_images(b_wrong_images, [8, 8], 'temp_wrong_image.png')
 
-    # if epoch % 50 == 0:
-    #     tl.files.save_npz(net_rnn.all_params, name=net_e_name, sess=sess)
-    #     tl.files.save_npz(net_g.all_params, name=net_g_name, sess=sess)
-    #     tl.files.save_npz(net_d.all_params, name=net_d_name, sess=sess)
-    #     net_e_name_e = os.path.join(save_dir, 'net_e_%d.npz' % epoch)
-    #     net_g_name_e = os.path.join(save_dir, 'net_g_%d.npz' % epoch)
-    #     net_d_name_e = os.path.join(save_dir, 'net_d_%d.npz' % epoch)
-    #     tl.files.save_npz(net_rnn.all_params, name=net_e_name_e, sess=sess)
-    #     tl.files.save_npz(net_g.all_params, name=net_g_name_e, sess=sess)
-    #     tl.files.save_npz(net_d.all_params, name=net_d_name_e, sess=sess)
-    #     print("[*] Saving checkpoints SUCCESS!")
+    if epoch % 50 == 0:
+        tl.files.save_npz(net_rnn.all_params, name=net_e_name, sess=sess)
+        tl.files.save_npz(net_g.all_params, name=net_g_name, sess=sess)
+        tl.files.save_npz(net_d.all_params, name=net_d_name, sess=sess)
+        net_e_name_e = os.path.join(save_dir, 'net_e_%d.npz' % epoch)
+        net_g_name_e = os.path.join(save_dir, 'net_g_%d.npz' % epoch)
+        net_d_name_e = os.path.join(save_dir, 'net_d_%d.npz' % epoch)
+        tl.files.save_npz(net_rnn.all_params, name=net_e_name_e, sess=sess)
+        tl.files.save_npz(net_g.all_params, name=net_g_name_e, sess=sess)
+        tl.files.save_npz(net_d.all_params, name=net_d_name_e, sess=sess)
+        print("[*] Saving checkpoints SUCCESS!")
         # tl.visualize.images2d(images=img_gen, second=0.01, saveable=True, name='temp_generate_%d' % epoch)#, dtype=np.uint8)
 
 

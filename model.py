@@ -14,19 +14,19 @@ c_dim = 3           # for rgb
 gf_dim = 64         # Number of conv in the first layer generator 64
 df_dim = 64         # Number of conv in the first layer discriminator 64
 
-def rnn_embed(input_seqs, is_train, reuse):
+def rnn_embed(input_seqs, is_train, reuse, name=""):
     """MY IMPLEMENTATION, same weights for the Word Embedding and RNN in the discriminator and generator.
     """
     w_init = tf.random_normal_initializer(stddev=0.02)
     # w_init = tf.constant_initializer(value=0.0)
-    with tf.variable_scope("rnn", reuse=reuse):
+    with tf.variable_scope("rnn"+name, reuse=reuse):
         tl.layers.set_name_reuse(reuse)
         network = EmbeddingInputlayer(
                      inputs = input_seqs,
                      vocabulary_size = vocab_size,
                      embedding_size = word_embedding_size,
                      E_init = w_init,
-                     name = 'wordembed')
+                     name = 'wordembed'+name)
         network = DynamicRNNLayer(network,
                      cell_fn = tf.nn.rnn_cell.LSTMCell,
                      n_hidden = word_embedding_size,
@@ -34,7 +34,7 @@ def rnn_embed(input_seqs, is_train, reuse):
                      initializer = w_init,
                      sequence_length = tl.layers.retrieve_seq_length_op2(input_seqs),
                      return_last = True,
-                     name = 'dynamic')
+                     name = 'dynamic'+name)
 
         # network = BiDynamicRNNLayer(network,
         #              cell_fn = tf.nn.rnn_cell.LSTMCell,
