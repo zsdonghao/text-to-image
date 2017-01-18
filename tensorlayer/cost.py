@@ -18,11 +18,11 @@ def cross_entropy(output, target, name="cross_entropy_loss"):
     output : Tensorflow variable
         A distribution with shape: [batch_size, n_feature].
     target : Tensorflow variable
-        A distribution with shape: [batch_size, n_feature].
+        A batch of index with shape: [batch_size, ].
 
     Examples
     --------
-    >>> ce = tf.cost.cross_entropy(y_logits, y_target_logits)
+    >>> ce = tl.cost.cross_entropy(y_logits, y_target_logits)
 
     References
     -----------
@@ -41,7 +41,7 @@ def cross_entropy(output, target, name="cross_entropy_loss"):
 def binary_cross_entropy(output, target, epsilon=1e-8, name='bce_loss'):
     """Computes binary cross entropy given `output`.
 
-    For brevity, let `x = `, `z = targets`.  The logistic loss is
+    For brevity, let `x = output`, `z = target`.  The binary cross entropy loss is
 
         loss(x, z) = - sum_i (x[i] * log(z[i]) + (1 - x[i]) * log(1 - z[i]))
 
@@ -78,13 +78,50 @@ def mean_squared_error(output, target):
         A distribution with shape: [batch_size, n_feature].
     """
     with tf.name_scope("mean_squared_error_loss"):
-        mse = tf.reduce_sum(tf.squared_difference(output, target), reduction_indices = 1)
-        return tf.reduce_mean(mse)
+        mse = tf.reduce_mean(tf.reduce_sum(tf.squared_difference(output, target),
+                                           reduction_indices = 1))
+        return mse
 
 
 
 def dice_coe(output, target, epsilon=1e-10):
     """Sørensen–Dice coefficient for comparing the similarity of two distributions,
+    usually be used for binary image segmentation i.e. labels are binary.
+    The coefficient = [0, 1], 1 if totally match.
+
+    Parameters
+    -----------
+    output : tensor
+        A distribution with shape: [batch_size, ....], (any dimensions).
+    target : tensor
+        A distribution with shape: [batch_size, ....], (any dimensions).
+    epsilon : float
+        An optional name to attach to this layer.
+
+    Examples
+    ---------
+    >>> outputs = tl.act.pixel_wise_softmax(network.outputs)
+    >>> dice_loss = 1 - tl.cost.dice_coe(outputs, y_, epsilon=1e-5)
+
+    References
+    -----------
+    - `wiki-dice <https://en.wikipedia.org/wiki/Sørensen–Dice_coefficient>`_
+    """
+    # inse = tf.reduce_sum( tf.mul(output, target) )
+    # l = tf.reduce_sum( tf.mul(output, output) )
+    # r = tf.reduce_sum( tf.mul(target, target) )
+    inse = tf.reduce_sum( output * target )
+    l = tf.reduce_sum( output * output )
+    r = tf.reduce_sum( target * target )
+    dice = 2 * (inse) / (l + r)
+    if epsilon == 0:
+        return dice
+    else:
+        return tf.clip_by_value(dice, 0, 1.0-epsilon)
+
+
+def dice_hard_coe(output, target, epsilon=1e-10):
+    """Non-differentiable Sørensen–Dice coefficient for comparing the similarity of two distributions,
     usually be used for binary image segmentation i.e. labels are binary.
     The coefficient = [0, 1], 1 if totally match.
 
@@ -106,9 +143,8 @@ def dice_coe(output, target, epsilon=1e-10):
     -----------
     - `wiki-dice <https://en.wikipedia.org/wiki/Sørensen–Dice_coefficient>`_
     """
-    # inse = tf.reduce_sum( tf.mul(output, target) )
-    # l = tf.reduce_sum( tf.mul(output, output) )
-    # r = tf.reduce_sum( tf.mul(target, target) )
+    output = tf.cast(output > 0.5, dtype=tf.float32)
+    target = tf.cast(target > 0.5, dtype=tf.float32)
     inse = tf.reduce_sum( output * target )
     l = tf.reduce_sum( output * output )
     r = tf.reduce_sum( target * target )
@@ -119,7 +155,7 @@ def dice_coe(output, target, epsilon=1e-10):
         return tf.clip_by_value(dice, 0, 1.0-epsilon)
 
 def iou_coe(output, target, threshold=0.5, epsilon=1e-10):
-    """Intersection over Union (Hard Dice), usually be used for evaluating binary image segmentation.
+    """Non-differentiable Intersection over Union, usually be used for evaluating binary image segmentation.
     The coefficient = [0, 1], 1 means totally match.
 
     Parameters
@@ -135,8 +171,8 @@ def iou_coe(output, target, threshold=0.5, epsilon=1e-10):
 
     Examples
     ---------
-    >>> outputs = pixel_wise_softmax(network.outputs)
-    >>> iou = iou_ef(outputs, y_, epsilon=1e-5)
+    >>> outputs = tl.act.pixel_wise_softmax(network.outputs)
+    >>> iou = tl.cost.iou_coe(outputs[:,:,:,0], y_[:,:,:,0])
 
     Notes
     ------
@@ -199,7 +235,6 @@ def cross_entropy_seq_with_mask(logits, target_seqs, input_mask, return_details=
     --------
     - see Image Captioning Example.
     """
-    print("     cross_entropy_seq_with_mask : Undocumented")
     targets = tf.reshape(target_seqs, [-1])   # to one vector
     weights = tf.to_float(tf.reshape(input_mask, [-1]))   # to one vector like targets
     losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits, targets)
@@ -211,8 +246,24 @@ def cross_entropy_seq_with_mask(logits, target_seqs, input_mask, return_details=
     else:
         return loss
 
+
+def cosine_similarity(v1, v2):
+    """Cosine similarity [-1, 1], `wiki <https://en.wikipedia.org/wiki/Cosine_similarity>`_.
+
+    Parameters
+    -----------
+    v1, v2 : tensor of [batch_size, n_feature], with the same number of features.
+
+    Returns
+    -----------
+    a tensor of [batch_size, ]
+    """
+    return tf.reduce_sum(tf.mul(v1, v2), reduction_indices=1) / (tf.sqrt(tf.reduce_sum(tf.mul(v1, v1), reduction_indices=1)) * tf.sqrt(tf.reduce_sum(tf.mul(v2, v2), reduction_indices=1)))
+
+
+
 ## Regularization Functions
-def li_regularizer(scale):
+def li_regularizer(scale, scope=None):
   """li regularization removes the neurons of previous layer, `i` represents `inputs`.\n
   Returns a function that can be used to apply group li regularization to weights.\n
   The implementation follows `TensorFlow contrib <https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/layers/python/layers/regularizers.py>`_.
@@ -221,10 +272,11 @@ def li_regularizer(scale):
   ----------
   scale : float
     A scalar multiplier `Tensor`. 0.0 disables the regularizer.
+  scope: An optional scope name for TF12+.
 
   Returns
   --------
-  A function with signature `li(weights, name=None)` that apply L1 regularization.
+  A function with signature `li(weights, name=None)` that apply Li regularization.
 
   Raises
   ------
@@ -250,17 +302,30 @@ def li_regularizer(scale):
 
   def li(weights, name=None):
     """Applies li regularization to weights."""
-    with ops.op_scope([weights], name, 'li_regularizer') as scope:
-      my_scale = ops.convert_to_tensor(scale,
-                                       dtype=weights.dtype.base_dtype,
-                                       name='scale')
-    return standard_ops.mul(
-          my_scale,
-          standard_ops.reduce_sum(standard_ops.sqrt(standard_ops.reduce_sum(tf.square(weights), 1))),
-          name=scope)
+    # with ops.op_scope([weights], name, 'li_regularizer') as scope: # tf.op_scope(values, name, default_name) is deprecated, use tf.name_scope(name, default_name, values)
+    try: # TF12
+        with ops.name_scope(scope, 'li_regularizer', [weights]) as name:
+            my_scale = ops.convert_to_tensor(scale,
+                                           dtype=weights.dtype.base_dtype,
+                                           name='scale')
+            return standard_ops.mul(
+              my_scale,
+              standard_ops.reduce_sum(standard_ops.sqrt(standard_ops.reduce_sum(tf.square(weights), 1))),
+              name=scope)
+    except: # TF11
+        with ops.op_scope([weights], name, 'li_regularizer') as scope:
+            my_scale = ops.convert_to_tensor(scale,
+                                           dtype=weights.dtype.base_dtype,
+                                           name='scale')
+            return standard_ops.mul(
+              my_scale,
+              standard_ops.reduce_sum(standard_ops.sqrt(standard_ops.reduce_sum(tf.square(weights), 1))),
+              name=scope)
   return li
 
-def lo_regularizer(scale):
+
+
+def lo_regularizer(scale, scope=None):
   """lo regularization removes the neurons of current layer, `o` represents `outputs`\n
   Returns a function that can be used to apply group lo regularization to weights.\n
   The implementation follows `TensorFlow contrib <https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/layers/python/layers/regularizers.py>`_.
@@ -269,6 +334,7 @@ def lo_regularizer(scale):
   ----------
   scale : float
     A scalar multiplier `Tensor`. 0.0 disables the regularizer.
+  scope: An optional scope name for TF12+.
 
   Returns
   -------
@@ -298,17 +364,27 @@ def lo_regularizer(scale):
 
   def lo(weights, name=None):
     """Applies group column regularization to weights."""
-    with ops.op_scope([weights], name, 'lo_regularizer') as scope:
-      my_scale = ops.convert_to_tensor(scale,
-                                       dtype=weights.dtype.base_dtype,
-                                       name='scale')
-      return standard_ops.mul(
-          my_scale,
-          standard_ops.reduce_sum(standard_ops.sqrt(standard_ops.reduce_sum(tf.square(weights), 0))),
-          name=scope)
+    try: # TF12
+        with ops.name_scope(scope, 'lo_regularizer', [weights]) as name:
+            my_scale = ops.convert_to_tensor(scale,
+                                           dtype=weights.dtype.base_dtype,
+                                           name='scale')
+            return standard_ops.mul(
+              my_scale,
+              standard_ops.reduce_sum(standard_ops.sqrt(standard_ops.reduce_sum(tf.square(weights), 0))),
+              name=scope)
+    except: # TF11
+        with ops.op_scope([weights], name, 'lo_regularizer') as scope:
+            my_scale = ops.convert_to_tensor(scale,
+                                           dtype=weights.dtype.base_dtype,
+                                           name='scale')
+            return standard_ops.mul(
+              my_scale,
+              standard_ops.reduce_sum(standard_ops.sqrt(standard_ops.reduce_sum(tf.square(weights), 0))),
+              name=scope)
   return lo
 
-def maxnorm_regularizer(scale=1.0):
+def maxnorm_regularizer(scale=1.0, scope=None):
   """Max-norm regularization returns a function that can be used
   to apply max-norm regularization to weights.
   About max-norm: `wiki <https://en.wikipedia.org/wiki/Matrix_norm#Max_norm>`_.\n
@@ -318,6 +394,7 @@ def maxnorm_regularizer(scale=1.0):
   ----------
   scale : float
     A scalar multiplier `Tensor`. 0.0 disables the regularizer.
+  scope: An optional scope name.
 
   Returns
   ---------
@@ -346,14 +423,21 @@ def maxnorm_regularizer(scale=1.0):
 
   def mn(weights, name=None):
     """Applies max-norm regularization to weights."""
-    with ops.op_scope([weights], name, 'maxnorm_regularizer') as scope:
-      my_scale = ops.convert_to_tensor(scale,
-                                       dtype=weights.dtype.base_dtype,
-                                       name='scale')
-      return standard_ops.mul(my_scale, standard_ops.reduce_max(standard_ops.abs(weights)), name=scope)
+    try: # TF12
+        with ops.name_scope(scope, 'maxnorm_regularizer', [weights]) as name:
+          my_scale = ops.convert_to_tensor(scale,
+                                           dtype=weights.dtype.base_dtype,
+                                           name='scale')
+          return standard_ops.mul(my_scale, standard_ops.reduce_max(standard_ops.abs(weights)), name=scope)
+    except: # TF11
+        with ops.op_scope([weights], name, 'maxnorm_regularizer') as scope:
+          my_scale = ops.convert_to_tensor(scale,
+                                           dtype=weights.dtype.base_dtype,
+                                           name='scale')
+          return standard_ops.mul(my_scale, standard_ops.reduce_max(standard_ops.abs(weights)), name=scope)
   return mn
 
-def maxnorm_o_regularizer(scale):
+def maxnorm_o_regularizer(scale, scope):
   """Max-norm output regularization removes the neurons of current layer.\n
   Returns a function that can be used to apply max-norm regularization to each column of weight matrix.\n
   The implementation follows `TensorFlow contrib <https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/layers/python/layers/regularizers.py>`_.
@@ -362,6 +446,7 @@ def maxnorm_o_regularizer(scale):
   ----------
   scale : float
     A scalar multiplier `Tensor`. 0.0 disables the regularizer.
+  scope: An optional scope name.
 
   Returns
   ---------
@@ -390,14 +475,21 @@ def maxnorm_o_regularizer(scale):
 
   def mn_o(weights, name=None):
     """Applies max-norm regularization to weights."""
-    with ops.op_scope([weights], name, 'maxnorm_o_regularizer') as scope:
-      my_scale = ops.convert_to_tensor(scale,
-                                       dtype=weights.dtype.base_dtype,
-                                               name='scale')
-      return standard_ops.mul(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 0)), name=scope)
+    try:    # TF12
+        with ops.name_scope(scope, 'maxnorm_o_regularizer', [weights]) as name:
+          my_scale = ops.convert_to_tensor(scale,
+                                           dtype=weights.dtype.base_dtype,
+                                                   name='scale')
+          return standard_ops.mul(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 0)), name=scope)
+    except: # TF11
+        with ops.op_scope([weights], name, 'maxnorm_o_regularizer') as scope:
+          my_scale = ops.convert_to_tensor(scale,
+                                           dtype=weights.dtype.base_dtype,
+                                                   name='scale')
+          return standard_ops.mul(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 0)), name=scope)
   return mn_o
 
-def maxnorm_i_regularizer(scale):
+def maxnorm_i_regularizer(scale, scope=None):
   """Max-norm input regularization removes the neurons of previous layer.\n
   Returns a function that can be used to apply max-norm regularization to each row of weight matrix.\n
   The implementation follows `TensorFlow contrib <https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/layers/python/layers/regularizers.py>`_.
@@ -406,6 +498,7 @@ def maxnorm_i_regularizer(scale):
   ----------
   scale : float
     A scalar multiplier `Tensor`. 0.0 disables the regularizer.
+  scope: An optional scope name.
 
   Returns
   ---------
@@ -434,11 +527,18 @@ def maxnorm_i_regularizer(scale):
 
   def mn_i(weights, name=None):
     """Applies max-norm regularization to weights."""
-    with ops.op_scope([weights], name, 'maxnorm_o_regularizer') as scope:
-      my_scale = ops.convert_to_tensor(scale,
-                                       dtype=weights.dtype.base_dtype,
-                                               name='scale')
-      return standard_ops.mul(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 1)), name=scope)
+    try: # TF12
+        with ops.name_scope(scope, 'maxnorm_i_regularizer', [weights]) as name:
+          my_scale = ops.convert_to_tensor(scale,
+                                           dtype=weights.dtype.base_dtype,
+                                                   name='scale')
+          return standard_ops.mul(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 1)), name=scope)
+    except: # TF11
+        with ops.op_scope([weights], name, 'maxnorm_i_regularizer') as scope:
+          my_scale = ops.convert_to_tensor(scale,
+                                           dtype=weights.dtype.base_dtype,
+                                                   name='scale')
+          return standard_ops.mul(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 1)), name=scope)
   return mn_i
 
 

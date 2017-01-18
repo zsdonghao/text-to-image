@@ -14,19 +14,20 @@ c_dim = 3           # for rgb
 gf_dim = 64         # Number of conv in the first layer generator 64
 df_dim = 64         # Number of conv in the first layer discriminator 64
 
-def rnn_embed(input_seqs, is_train, reuse, name=""):
+
+def rnn_embed(input_seqs, is_train, reuse, return_embed=True):
     """MY IMPLEMENTATION, same weights for the Word Embedding and RNN in the discriminator and generator.
     """
     w_init = tf.random_normal_initializer(stddev=0.02)
     # w_init = tf.constant_initializer(value=0.0)
-    with tf.variable_scope("rnn"+name, reuse=reuse):
+    with tf.variable_scope("rnn", reuse=reuse):
         tl.layers.set_name_reuse(reuse)
         network = EmbeddingInputlayer(
                      inputs = input_seqs,
                      vocabulary_size = vocab_size,
                      embedding_size = word_embedding_size,
                      E_init = w_init,
-                     name = 'wordembed'+name)
+                     name = 'wordembed')
         network = DynamicRNNLayer(network,
                      cell_fn = tf.nn.rnn_cell.LSTMCell,
                      n_hidden = word_embedding_size,
@@ -34,7 +35,7 @@ def rnn_embed(input_seqs, is_train, reuse, name=""):
                      initializer = w_init,
                      sequence_length = tl.layers.retrieve_seq_length_op2(input_seqs),
                      return_last = True,
-                     name = 'dynamic'+name)
+                     name = 'dynamic')
 
         # network = BiDynamicRNNLayer(network,
         #              cell_fn = tf.nn.rnn_cell.LSTMCell,
@@ -46,10 +47,18 @@ def rnn_embed(input_seqs, is_train, reuse, name=""):
         #              return_last_mode = 'simple',
         #              name = 'bidynamic')
 
-        # paper 4.1: reduce the dim of description embedding in (seperate) FC layer followed by rectification
-        # network = DenseLayer(network, n_units=t_dim,
-        #         act=lambda x: tl.act.lrelu(x, 0.2), W_init=w_init, name='reduce_txt/dense')
-    return network
+    #     # paper 4.1: reduce the dim of description embedding in (seperate) FC layer followed by rectification
+    #     network = DenseLayer(network, n_units=t_dim,
+    #             act=lambda x: tl.act.lrelu(x, 0.2), W_init=w_init, name='reduce_txt/dense')
+    # return network
+    if return_embed:
+        with tf.variable_scope("rnn", reuse=reuse):
+            net_embed = DenseLayer(network, n_units = t_dim,
+                            act = tf.identity,# W_init = initializer,
+                            b_init = None, name='hidden_state_embedding')
+            return net_embed
+    else:
+        return network
 
 def generator_txt2img(input_z, net_rnn_embed=None, is_train=True, reuse=False):
     # IMPLEMENTATION based on : https://github.com/paarthneekhara/text-to-image/blob/master/model.py
@@ -155,6 +164,7 @@ def discriminator_txt2img(input_images, net_rnn_embed=None, is_train=True, reuse
     return net_h4, logits
 
 
+
 ## DCGAN =======================================================================
 def generator_dcgan(inputs, net_rnn_embed=None, is_train=True, reuse=False):
     image_size = 64
@@ -233,3 +243,37 @@ def discriminator_dcgan(inputs, net_rnn_embed=None, is_train=True, reuse=False):
         logits = net_h4.outputs
         net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)
     return net_h4, logits
+
+## CNN encoder
+def cnn_encoder(inputs, is_train, reuse):
+    w_init = tf.random_normal_initializer(stddev=0.02)
+    gamma_init = tf.random_normal_initializer(1., 0.02)
+    with tf.variable_scope("cnn", reuse=reuse):
+        tl.layers.set_name_reuse(reuse)
+
+        net_in = InputLayer(inputs, name='p/in')
+        net_h0 = Conv2d(net_in, df_dim, (5, 5), (2, 2), act=lambda x: tl.act.lrelu(x, 0.2),
+                padding='SAME', W_init=w_init, name='p/h0/conv2d')
+
+        net_h1 = Conv2d(net_h0, df_dim*2, (5, 5), (2, 2), act=lambda x: tl.act.lrelu(x, 0.2),
+                padding='SAME', W_init=w_init, name='p/h1/conv2d')
+        net_h1 = BatchNormLayer(net_h1, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='p/h1/batch_norm')
+
+        net_h2 = Conv2d(net_h1, df_dim*4, (5, 5), (2, 2), act=lambda x: tl.act.lrelu(x, 0.2),
+                padding='SAME', W_init=w_init, name='p/h2/conv2d')
+        net_h2 = BatchNormLayer(net_h2, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='p/h2/batch_norm')
+
+        net_h3 = Conv2d(net_h2, df_dim*8, (5, 5), (2, 2), act=lambda x: tl.act.lrelu(x, 0.2),
+                padding='SAME', W_init=w_init, name='p/h3/conv2d')
+        net_h3 = BatchNormLayer(net_h3, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='p/h3/batch_norm')
+
+        net_h4 = FlattenLayer(net_h3, name='p/h4/flatten')
+        net_h4 = DenseLayer(net_h4, n_units=t_dim,
+                act=tf.identity,
+                W_init = w_init,
+                b_init = None,
+                name='p/h4/embed')
+    return net_h4
