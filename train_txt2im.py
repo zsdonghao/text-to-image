@@ -39,7 +39,7 @@ Code References
 """
 ###======================== PREPARE DATA ====================================###
 ## Directory of Oxford 102 flowers dataset
-if False:
+if True:
     """
     images.shape = [8000, 64, 64, 3]
     captions_ids = [80000, any]
@@ -76,7 +76,7 @@ if False:
     captions_ids = []
     for key, value in captions_dict.iteritems():
         for v in value:
-            captions_ids.append( [vocab.word_to_id(word) for word in nltk.tokenize.word_tokenize(v)] )
+            captions_ids.append( [vocab.word_to_id(word) for word in nltk.tokenize.word_tokenize(v)] + [vocab.end_id])  # add END_ID
             # print(v)              # prominent purple stigma,petals are white inc olor
             # print(captions_ids)   # [[152, 19, 33, 15, 3, 8, 14, 719, 723]]
             # exit()
@@ -323,7 +323,7 @@ sample_sentence = ["these white flowers have petals that start off white in colo
 # sample_sentence = captions_ids_test[0:sample_size]
 for i, sentence in enumerate(sample_sentence):
     print("seed: %s" % sentence)
-    sample_sentence[i] = [vocab.word_to_id(word) for word in nltk.tokenize.word_tokenize(sentence)]
+    sample_sentence[i] = [vocab.word_to_id(word) for word in nltk.tokenize.word_tokenize(sentence)] + [vocab.end_id]    # add END_ID
     # sample_sentence[i] = [vocab.word_to_id(word) for word in sentence]
     # print(sample_sentence[i])
 sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
