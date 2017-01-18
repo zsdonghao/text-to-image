@@ -6,7 +6,8 @@ from tensorlayer.layers import *
 batch_size = 64
 vocab_size = 8000
 word_embedding_size = 512    # paper said 1024 char-CNN-RNN
-keep_prob = 0.5
+rnn_hidden_size = 256
+keep_prob = 0.7
 z_dim = 100         # Noise dimension
 t_dim = 128         # Text feature dimension # paper said 128
 image_size = 64     # 64 x 64
@@ -30,27 +31,12 @@ def rnn_embed(input_seqs, is_train, reuse, return_embed=True):
                      name = 'wordembed')
         network = DynamicRNNLayer(network,
                      cell_fn = tf.nn.rnn_cell.LSTMCell,
-                     n_hidden = word_embedding_size,
+                     n_hidden = rnn_hidden_size,
                      dropout = (keep_prob if is_train else None),
                      initializer = w_init,
                      sequence_length = tl.layers.retrieve_seq_length_op2(input_seqs),
                      return_last = True,
                      name = 'dynamic')
-
-        # network = BiDynamicRNNLayer(network,
-        #              cell_fn = tf.nn.rnn_cell.LSTMCell,
-        #              n_hidden = word_embedding_size,
-        #              dropout = (keep_prob if is_train else None),
-        #              initializer = w_init,
-        #              sequence_length = tl.layers.retrieve_seq_length_op2(input_seqs),
-        #              return_last = True,
-        #              return_last_mode = 'simple',
-        #              name = 'bidynamic')
-
-    #     # paper 4.1: reduce the dim of description embedding in (seperate) FC layer followed by rectification
-    #     network = DenseLayer(network, n_units=t_dim,
-    #             act=lambda x: tl.act.lrelu(x, 0.2), W_init=w_init, name='reduce_txt/dense')
-    # return network
     if return_embed:
         with tf.variable_scope("rnn", reuse=reuse):
             net_embed = DenseLayer(network, n_units = t_dim,

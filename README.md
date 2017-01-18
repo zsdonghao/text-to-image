@@ -1,4 +1,4 @@
-# Text To Image Synthesis (Developing)
+# Text To Image Synthesis 
 
 
 This is an experimental tensorflow implementation of synthesizing images. The images are synthesized using the GAN-CLS Algorithm from the paper [Generative Adversarial Text-to-Image Synthesis][2]. This implementation is built on top of the excellent [DCGAN in Tensorflow][3]. The following is the model architecture.
@@ -8,7 +8,7 @@ This is an experimental tensorflow implementation of synthesizing images. The im
 Image Source : [Generative Adversarial Text-to-Image Synthesis][2] Paper
 
 ## Requirements
-- [TensorLayer](https://github.com/zsdonghao/tensorlayer) 1.2.5 (or later)
+- [TensorLayer](https://github.com/zsdonghao/tensorlayer) 1.3.1 (or later)
 - [Tensorflow][4] 0.10 (or later)
 - [NLTK][8] : for tokenizer
 
@@ -17,7 +17,7 @@ Image Source : [Generative Adversarial Text-to-Image Synthesis][2] Paper
 
 ## Codes
 - `train_dcgan.py` use DCGAN to generate new images.
-- `train_txt2im.py` use GAN-CLS to generate new images from text.
+- `train_txt2im.py` use GAN-CLS to generate new images conditioned on text.
 - `utils.py` helper functions.
 
 

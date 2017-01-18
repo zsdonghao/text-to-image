@@ -19,6 +19,7 @@ from model import *
 
 pp = pprint.PrettyPrinter()
 
+os.system("mkdir samples")
 """
 TensorLayer implementation of DCGAN to generate image.
 

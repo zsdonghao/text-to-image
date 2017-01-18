@@ -21,6 +21,8 @@ from utils import *
 from model import *
 
 
+os.system("mkdir samples")
+
 """ Generative Adversarial Text to Image Synthesis
 
 Downlaod Oxford 102 flowers dataset and caption
@@ -74,7 +76,11 @@ if True:
 
     ## store all captions ids in list
     captions_ids = []
-    for key, value in captions_dict.iteritems():
+    try: # python3
+        tmp = captions_dict.items()
+    except:
+        tmp = captions_dict.iteritems()
+    for key, value in tmp:
         for v in value:
             captions_ids.append( [vocab.word_to_id(word) for word in nltk.tokenize.word_tokenize(v)] + [vocab.end_id])  # add END_ID
             # print(v)              # prominent purple stigma,petals are white inc olor
@@ -232,7 +238,6 @@ _, disc_wrong_image_logits = discriminator_txt2img( # CLS
                 net_rnn,                                            # remove if DCGAN only
                 is_train=True, reuse=True)                               # remove if DCGAN only
 
-
 ## testing inference for DCGAN
 # net_g, _ = generator_dcgan(t_z, is_train=False, reuse=True)
 ## testing inference for txt2img
@@ -258,7 +263,7 @@ lr = 0.0002
 beta1 = 0.5
 n_g_batch = 2   # update G, x time per batch
 c_vars = tl.layers.get_variables_with_name('cnn', True, True)
-e_vars = tl.layers.get_variables_with_name('rnn', True, True)           #  remove if DCGAN only
+e_vars = tl.layers.get_variables_with_name('rnn', True, True)
 d_vars = tl.layers.get_variables_with_name('discriminator', True, True)
 g_vars = tl.layers.get_variables_with_name('generator', True, True)
 
@@ -272,13 +277,14 @@ g_vars = tl.layers.get_variables_with_name('generator', True, True)
 # optimizer = tf.train.AdamOptimizer(1e-4, beta1=beta1)
 # g_optim = optimizer.apply_gradients(zip(grads, g_vars))
 
-d_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(d_loss, var_list=d_vars )#+ e_vars)
-g_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=g_vars )#+ e_vars)
-e_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=e_vars + c_vars)
+d_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(d_loss, var_list=d_vars )
+g_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=g_vars )
+e_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(e_loss, var_list=e_vars + c_vars)
 
 ###============================ TRAINING ====================================###
 sess = tf.InteractiveSession()
-sess.run(tf.initialize_all_variables())
+# sess.run(tf.initialize_all_variables())
+tl.layers.initialize_global_variables(sess)
 
 save_dir = "checkpoint"
 if not os.path.exists(save_dir):
@@ -318,8 +324,16 @@ sample_seed = np.random.uniform(low=-1, high=1, size=(sample_size, z_dim)).astyp
 #                     "the flower has petals that are bright pinkish purple with white stigma"] * 32
 # sample_sentence = ["these flowers have petals that start off white in color and end in a dark purple towards the tips"] * 32 + \
 #                     ["bright droopy yellow petals with burgundy streaks and a yellow stigma"] * 32
-sample_sentence = ["these white flowers have petals that start off white in color and end in a white towards the tips",
-                    "this yellow petals with burgundy streaks and a yellow stigma"] * 32
+# sample_sentence = ["these white flowers have petals that start off white in color and end in a white towards the tips",
+#                     "this yellow petals with burgundy streaks and a yellow stigma"] * 32
+sample_sentence = ["these white flowers have petals that start off white in color and end in a white towards the tips."] * int(sample_size/8) + \
+                  ["this yellow petals with burgundy streaks and a yellow stigma."] * int(sample_size/8) + \
+                  ["the flower shown has yellow anther red pistil and bright red petals."] * int(sample_size/8) + \
+                  ["this flower has a lot of small round pink petals."] * int(sample_size/8) + \
+                  ["this flower is orange in color, and has petals that are ruffled and rounded."] * int(sample_size/8) + \
+                  ["the flower has yellow petals and the center of it is brown."] * int(sample_size/8) + \
+                  ["this flower has petals that are yellow, white and purple and has dark lines"] * int(sample_size/8) + \
+                  ["this flower has petals that are blue and white."] * int(sample_size/8)
 # sample_sentence = captions_ids_test[0:sample_size]
 for i, sentence in enumerate(sample_sentence):
     print("seed: %s" % sentence)
@@ -343,9 +357,9 @@ for epoch in range(n_epoch):
         ## get real image
         b_real_images = images_train[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real images   (64, 64, 64, 3)
         ## get wrong caption
-        # idexs = get_random_int(min=0, max=n_captions-1, number=batch_size)
-        # b_wrong_caption = captions_ids[idexs]
-        # b_wrong_caption = tl.prepro.pad_sequences(b_wrong_caption, padding='post')                                    # mismatched text
+        idexs = get_random_int(min=0, max=n_captions_train-1, number=batch_size)
+        b_wrong_caption = captions_ids[idexs]
+        b_wrong_caption = tl.prepro.pad_sequences(b_wrong_caption, padding='post')                                    # mismatched text
         ## get wrong image
         idexs2 = get_random_int(min=0, max=n_images_train-1, number=batch_size)        # remove if DCGAN only
         b_wrong_images = images_train[idexs2]                                               # remove if DCGAN only
@@ -359,14 +373,18 @@ for epoch in range(n_epoch):
         # save_images(b_real_images, [8, 8], 'real_image.png')
         # exit()
 
-        ## updates RNN-CNN mapping
-        errE, _ = sess.run([e_loss, e_optim], feed_dict={
-                                        t_real_image : b_real_images,
-                                        t_wrong_image : b_wrong_images,
-                                        t_real_caption : b_real_caption,
-                                        t_wrong_caption : b_real_caption[-1:]+b_real_caption[:-1],
-                                        })
-        # total_e_loss += errE
+        ## updates text-to-image mapping
+        if epoch < 30:
+            errE, _ = sess.run([e_loss, e_optim], feed_dict={
+                                            t_real_image : b_real_images,
+                                            t_wrong_image : b_wrong_images,
+                                            t_real_caption : b_real_caption,
+                                            t_wrong_caption : b_wrong_caption,
+                                            # t_z : b_z # error
+                                            })
+            # total_e_loss += errE
+        else:
+            errE = 0
 
         ## updates D
         b_real_images = threading_data(b_real_images, prepro_img, mode='train')   # [0, 255] --> [-1, 1]
