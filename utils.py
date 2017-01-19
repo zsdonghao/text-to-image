@@ -2,6 +2,7 @@ import tensorflow as tf
 import os
 import random
 import scipy
+import scipy.misc
 import numpy as np
 
 """ The functions here will be merged into TensorLayer after finishing this project.
@@ -84,6 +85,15 @@ def prepro_img(x, mode=None):
 
 
 
+def combine_and_save_image_sets(image_sets, directory):
+    for i in range(len(image_sets[0])):
+        combined_image = []
+        for set_no in range(len(image_sets)):
+            combined_image.append( image_sets[set_no][i] )
+            combined_image.append( np.zeros((image_sets[set_no][i].shape[0], 5, 3)) )
+        combined_image = np.concatenate( combined_image, axis = 1 )
+
+        scipy.misc.imsave( os.path.join( directory,  'combined_{}.jpg'.format(i) ), combined_image)
 
 
 

@@ -130,7 +130,7 @@ def discriminator_txt2img(input_images, net_rnn_embed=None, is_train=True, reuse
                    act=lambda x: tl.act.lrelu(x, 0.2),
                    W_init=w_init, name='d_reduce_txt/dense')
             # net_reduced_text = net_rnn_embed  # if reduce_txt in rnn_embed
-            net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 1)
+            net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 1)  # you can use ExpandDimsLayer and TileLayer instead
             net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 2)
             net_reduced_text.outputs = tf.tile(net_reduced_text.outputs, [1, 4, 4, 1], name='d_tiled_embeddings')
 
@@ -231,10 +231,10 @@ def discriminator_dcgan(inputs, net_rnn_embed=None, is_train=True, reuse=False):
     return net_h4, logits
 
 ## CNN encoder
-def cnn_encoder(inputs, is_train, reuse):
+def cnn_encoder(inputs, is_train, reuse, name="cnn"):
     w_init = tf.random_normal_initializer(stddev=0.02)
     gamma_init = tf.random_normal_initializer(1., 0.02)
-    with tf.variable_scope("cnn", reuse=reuse):
+    with tf.variable_scope(name, reuse=reuse):
         tl.layers.set_name_reuse(reuse)
 
         net_in = InputLayer(inputs, name='p/in')
@@ -257,7 +257,7 @@ def cnn_encoder(inputs, is_train, reuse):
                 is_train=is_train, gamma_init=gamma_init, name='p/h3/batch_norm')
 
         net_h4 = FlattenLayer(net_h3, name='p/h4/flatten')
-        net_h4 = DenseLayer(net_h4, n_units=t_dim,
+        net_h4 = DenseLayer(net_h4, n_units=(t_dim if name=="cnn" else z_dim),
                 act=tf.identity,
                 W_init = w_init,
                 b_init = None,
