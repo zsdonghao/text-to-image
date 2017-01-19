@@ -5,9 +5,9 @@ from tensorlayer.layers import *
 ## GAN for text to img =========================================================
 batch_size = 64
 vocab_size = 8000
-word_embedding_size = 512    # paper said 1024 char-CNN-RNN
-rnn_hidden_size = 256
-keep_prob = 0.7
+word_embedding_size = 256    # paper said 1024 char-CNN-RNN
+rnn_hidden_size = 128#256
+keep_prob = 1.0
 z_dim = 100         # Noise dimension
 t_dim = 128         # Text feature dimension # paper said 128
 image_size = 64     # 64 x 64

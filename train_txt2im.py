@@ -20,8 +20,8 @@ import random
 from utils import *
 from model import *
 
-
 os.system("mkdir samples")
+os.system("mkdir checkpoint")
 
 """ Generative Adversarial Text to Image Synthesis
 
@@ -78,7 +78,7 @@ if True:
     captions_ids = []
     try: # python3
         tmp = captions_dict.items()
-    except:
+    except: # python3
         tmp = captions_dict.iteritems()
     for key, value in tmp:
         for v in value:
@@ -163,31 +163,6 @@ if True:
 ###======================== DEFIINE MODEL ===================================###
 ## define data augmentation method
 from tensorlayer.prepro import *
-def prepro_img(x, mode=None):
-    if mode=='train':
-    # rescale [0, 255] --> (-1, 1), random flip, crop, rotate
-    #   paper 5.1: During mini-batch selection for training we randomly pick
-    #   an image view (e.g. crop, flip) of the image and one of the captions
-    # flip, rotate, crop, resize : https://github.com/reedscot/icml2016/blob/master/data/donkey_folder_coco.lua
-    # flip : https://github.com/paarthneekhara/text-to-image/blob/master/Utils/image_processing.py
-        # x = flip_axis(x, axis=1, is_random=True)
-        # x = rotation(x, rg=16, is_random=True, fill_mode='nearest')
-        # x = crop(x, wrg=50, hrg=50, is_random=True)
-        # x = imresize(x, size=[64, 64], interp='bilinear', mode=None)
-        x = x / (255. / 2.)
-        x = x - 1.
-    elif mode=='rescale':
-    # rescale (-1, 1) --> (0, 1) for display
-        x = (x + 1.) / 2.
-    elif mode=='debug':
-        x = flip_axis(x, axis=1, is_random=False)
-        # x = rotation(x, rg=16, is_random=False, fill_mode='nearest')
-        # x = crop(x, wrg=50, hrg=50, is_random=True)
-        # x = imresize(x, size=[64, 64], interp='bilinear', mode=None)
-        x = x / 255.
-    else:
-        raise Exception("Not support : %s" % mode)
-    return x
 
 ## you may want to see how the data augmentation work
 # save_images(images[:64], [8, 8], 'temp.png')
@@ -290,28 +265,30 @@ save_dir = "checkpoint"
 if not os.path.exists(save_dir):
     print("[!] Folder (%s) is not exist, creating it ..." % save_dir)
     os.mkdir(save_dir)
+
 # load the latest checkpoints
 net_e_name = os.path.join(save_dir, 'net_e.npz')
 net_c_name = os.path.join(save_dir, 'net_c.npz')
 net_g_name = os.path.join(save_dir, 'net_g.npz')
 net_d_name = os.path.join(save_dir, 'net_d.npz')
-if not (os.path.exists(net_e_name) and os.path.exists(net_c_name)):
-    print("[!] Loading RNN and CNN checkpoints failed!")
-else:
-    net_c_loaded_params = tl.files.load_npz(name=net_c_name)
-    net_e_loaded_params = tl.files.load_npz(name=net_e_name)
-    tl.files.assign_params(sess, net_c_loaded_params, net_cnn)
-    tl.files.assign_params(sess, net_e_loaded_params, net_rnn)
-    print("[*] Loading RNN and CNN checkpoints SUCCESS!")
+if False:
+    if not (os.path.exists(net_e_name) and os.path.exists(net_c_name)):
+        print("[!] Loading RNN and CNN checkpoints failed!")
+    else:
+        net_c_loaded_params = tl.files.load_npz(name=net_c_name)
+        net_e_loaded_params = tl.files.load_npz(name=net_e_name)
+        tl.files.assign_params(sess, net_c_loaded_params, net_cnn)
+        tl.files.assign_params(sess, net_e_loaded_params, net_rnn)
+        print("[*] Loading RNN and CNN checkpoints SUCCESS!")
 
-if not (os.path.exists(net_g_name) and os.path.exists(net_d_name)):
-    print("[!] Loading G and D checkpoints failed!")
-else:
-    net_g_loaded_params = tl.files.load_npz(name=net_g_name)
-    net_d_loaded_params = tl.files.load_npz(name=net_d_name)
-    tl.files.assign_params(sess, net_g_loaded_params, net_g)
-    tl.files.assign_params(sess, net_d_loaded_params, net_d)
-    print("[*] Loading G and D checkpoints SUCCESS!")
+    if not (os.path.exists(net_g_name) and os.path.exists(net_d_name)):
+        print("[!] Loading G and D checkpoints failed!")
+    else:
+        net_g_loaded_params = tl.files.load_npz(name=net_g_name)
+        net_d_loaded_params = tl.files.load_npz(name=net_d_name)
+        tl.files.assign_params(sess, net_g_loaded_params, net_g)
+        tl.files.assign_params(sess, net_d_loaded_params, net_d)
+        print("[*] Loading G and D checkpoints SUCCESS!")
 
 # sess=tf.Session()
 # tl.ops.set_gpu_fraction(sess=sess, gpu_fraction=0.998)
@@ -319,21 +296,23 @@ else:
 
 ## seed for generation, z and sentence ids
 sample_size = batch_size
-sample_seed = np.random.uniform(low=-1, high=1, size=(sample_size, z_dim)).astype(np.float32)        # paper said [0, 1]
+sample_seed = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
+    # sample_seed = np.random.uniform(low=-1, high=1, size=(sample_size, z_dim)).astype(np.float32)        # paper said [0, 1]
 # sample_sentence = ["this white and yellow flower have thin white petals and a round yellow stamen", \
 #                     "the flower has petals that are bright pinkish purple with white stigma"] * 32
 # sample_sentence = ["these flowers have petals that start off white in color and end in a dark purple towards the tips"] * 32 + \
 #                     ["bright droopy yellow petals with burgundy streaks and a yellow stigma"] * 32
 # sample_sentence = ["these white flowers have petals that start off white in color and end in a white towards the tips",
 #                     "this yellow petals with burgundy streaks and a yellow stigma"] * 32
-sample_sentence = ["these white flowers have petals that start off white in color and end in a white towards the tips."] * int(sample_size/8) + \
-                  ["this yellow petals with burgundy streaks and a yellow stigma."] * int(sample_size/8) + \
-                  ["the flower shown has yellow anther red pistil and bright red petals."] * int(sample_size/8) + \
+sample_sentence = ["the flower shown has yellow anther red pistil and bright red petals."] * int(sample_size/8) + \
+                  ["this flower has petals that are yellow, white and purple and has dark lines"] * int(sample_size/8) + \
+                  ["the petals on this flower are white with a yellow center"] * int(sample_size/8) + \
                   ["this flower has a lot of small round pink petals."] * int(sample_size/8) + \
                   ["this flower is orange in color, and has petals that are ruffled and rounded."] * int(sample_size/8) + \
                   ["the flower has yellow petals and the center of it is brown."] * int(sample_size/8) + \
-                  ["this flower has petals that are yellow, white and purple and has dark lines"] * int(sample_size/8) + \
-                  ["this flower has petals that are blue and white."] * int(sample_size/8)
+                  ["this flower has petals that are blue and white."] * int(sample_size/8) +\
+                  ["these white flowers have petals that start off white in color and end in a white towards the tips."] * int(sample_size/8)
+
 # sample_sentence = captions_ids_test[0:sample_size]
 for i, sentence in enumerate(sample_sentence):
     print("seed: %s" % sentence)
@@ -343,7 +322,7 @@ for i, sentence in enumerate(sample_sentence):
 sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
 
 
-n_epoch = 1000   # 600 when pre-trained rnn
+n_epoch = 100   # 600 when pre-trained rnn
 print_freq = 1
 n_batch_epoch = int(n_images / batch_size)
 for epoch in range(n_epoch):
@@ -364,7 +343,8 @@ for epoch in range(n_epoch):
         idexs2 = get_random_int(min=0, max=n_images_train-1, number=batch_size)        # remove if DCGAN only
         b_wrong_images = images_train[idexs2]                                               # remove if DCGAN only
         ## get noise
-        b_z = np.random.uniform(low=-1, high=1, size=[batch_size, z_dim]).astype(np.float32)       # paper said [0, 1], but [-1, 1] is better
+        b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
+            # b_z = np.random.uniform(low=-1, high=1, size=[batch_size, z_dim]).astype(np.float32)       # paper said [0, 1], but [-1, 1] is better
         ## check data
         # print(np.min(b_real_images), np.max(b_real_images), b_real_images.shape)    # [0, 1] (64, 64, 64, 3)
         # for i, seq in enumerate(b_real_caption):
@@ -374,7 +354,7 @@ for epoch in range(n_epoch):
         # exit()
 
         ## updates text-to-image mapping
-        if epoch < 30:
+        if epoch < 10:
             errE, _ = sess.run([e_loss, e_optim], feed_dict={
                                             t_real_image : b_real_images,
                                             t_wrong_image : b_wrong_images,

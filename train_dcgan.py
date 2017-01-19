@@ -19,7 +19,6 @@ from model import *
 
 pp = pprint.PrettyPrinter()
 
-os.system("mkdir samples")
 """
 TensorLayer implementation of DCGAN to generate image.
 
@@ -45,6 +44,12 @@ flags.DEFINE_boolean("is_train", False, "True for training, False for testing [F
 flags.DEFINE_boolean("is_crop", True, "True for training, False for testing [False]")
 flags.DEFINE_boolean("visualize", False, "True for visualizing, False for nothing [False]")
 FLAGS = flags.FLAGS
+
+os.system("mkdir samples")
+os.system("mkdir checkpoint")
+os.system("mkdir samples/"+FLAGS.dataset+"_dcgan")
+os.system("mkdir checkpoint/"+FLAGS.dataset+"_dcgan")
+
 
 def merge(images, size):
     h, w = images.shape[1], images.shape[2]
@@ -97,9 +102,14 @@ if True:
 
     ## store all captions ids in list
     captions_ids = []
-    for key, value in captions_dict.iteritems():
+    try: # python3
+        tmp = captions_dict.items()
+    except: # python3
+        tmp = captions_dict.iteritems()
+    for key, value in tmp:
+    # for key, value in captions_dict.iteritems():
         for v in value:
-            captions_ids.append( [vocab.word_to_id(word) for word in nltk.tokenize.word_tokenize(v)] )
+            captions_ids.append( [vocab.word_to_id(word) for word in nltk.tokenize.word_tokenize(v) + [vocab.end_id]])
             # print(v)              # prominent purple stigma,petals are white inc olor
             # print(captions_ids)   # [[152, 19, 33, 15, 3, 8, 14, 719, 723]]
             # exit()
@@ -180,7 +190,8 @@ def main(_):
                           .minimize(g_loss, var_list=g_vars)
 
     sess=tf.Session()
-    sess.run(tf.initialize_all_variables())
+    # sess.run(tf.initialize_all_variables())
+    tl.layers.initialize_global_variables(sess)
 
     # load checkpoints
     print("[*] Loading checkpoints...")
@@ -204,7 +215,7 @@ def main(_):
     for epoch in range(FLAGS.epoch):
         idexs = get_random_int(min=0, max=n_captions-1, number=FLAGS.batch_size)
         sample_images = images[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]
-        print("[*]Sample images updated!")
+        print("[*] Sample images updated!")
 
         batch_idxs = int(n_images / FLAGS.batch_size)
 
