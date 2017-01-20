@@ -151,7 +151,7 @@ net_e_name = os.path.join(save_dir, 'net_e.npz')
 net_c_name = os.path.join(save_dir, 'net_c.npz')
 net_g_name = os.path.join(save_dir, 'net_g.npz')
 net_d_name = os.path.join(save_dir, 'net_d.npz')
-if False:
+if True:
     if not (os.path.exists(net_e_name) and os.path.exists(net_c_name)):
         print("[!] Loading RNN and CNN checkpoints failed!")
     else:
@@ -202,10 +202,10 @@ for i, sentence in enumerate(sample_sentence):
 sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
 
 
-n_epoch = 100   # 600 when pre-trained rnn
+n_epoch = 500   # 600 when pre-trained rnn
 print_freq = 1
 n_batch_epoch = int(n_images / batch_size)
-for epoch in range(n_epoch):
+for epoch in range(n_epoch+1):
     start_time = time.time()
     for step in range(n_batch_epoch):
         step_time = time.time()
@@ -234,7 +234,7 @@ for epoch in range(n_epoch):
         # exit()
 
         ## updates text-to-image mapping
-        if epoch < 30:
+        if epoch < 50:
             errE, _ = sess.run([e_loss, e_optim], feed_dict={
                                             t_real_image : b_real_images,
                                             t_wrong_image : b_wrong_images,
@@ -244,7 +244,7 @@ for epoch in range(n_epoch):
                                             })
             # total_e_loss += errE
         else:
-            errE = 0
+            errE = int(0)
 
         ## updates D
         b_real_images = threading_data(b_real_images, prepro_img, mode='train')   # [0, 255] --> [-1, 1]
@@ -294,20 +294,22 @@ for epoch in range(n_epoch):
         # save_images(b_real_images, [8, 8], 'temp_real_image.png')
         # save_images(b_wrong_images, [8, 8], 'temp_wrong_image.png')
 
-    if epoch % 5 == 0:
+    if (epoch != 0) and (epoch % 5) == 0:
         tl.files.save_npz(net_cnn.all_params, name=net_c_name, sess=sess)
         tl.files.save_npz(net_rnn.all_params, name=net_e_name, sess=sess)
         tl.files.save_npz(net_g.all_params, name=net_g_name, sess=sess)
         tl.files.save_npz(net_d.all_params, name=net_d_name, sess=sess)
         print("[*] Saving checkpoints SUCCESS!")
-        # net_c_name_e = os.path.join(save_dir, 'net_c_%d.npz' % epoch)
-        # net_e_name_e = os.path.join(save_dir, 'net_e_%d.npz' % epoch)
-        # net_g_name_e = os.path.join(save_dir, 'net_g_%d.npz' % epoch)
-        # net_d_name_e = os.path.join(save_dir, 'net_d_%d.npz' % epoch)
-        # tl.files.save_npz(net_cnn.all_params, name=net_c_name_e, sess=sess)
-        # tl.files.save_npz(net_rnn.all_params, name=net_e_name_e, sess=sess)
-        # tl.files.save_npz(net_g.all_params, name=net_g_name_e, sess=sess)
-        # tl.files.save_npz(net_d.all_params, name=net_d_name_e, sess=sess)
+
+    if (epoch != 0) and (epoch % 100) == 0:
+        net_c_name_e = os.path.join(save_dir, 'net_c_%d.npz' % epoch)
+        net_e_name_e = os.path.join(save_dir, 'net_e_%d.npz' % epoch)
+        net_g_name_e = os.path.join(save_dir, 'net_g_%d.npz' % epoch)
+        net_d_name_e = os.path.join(save_dir, 'net_d_%d.npz' % epoch)
+        tl.files.save_npz(net_cnn.all_params, name=net_c_name_e, sess=sess)
+        tl.files.save_npz(net_rnn.all_params, name=net_e_name_e, sess=sess)
+        tl.files.save_npz(net_g.all_params, name=net_g_name_e, sess=sess)
+        tl.files.save_npz(net_d.all_params, name=net_d_name_e, sess=sess)
 
         # tl.visualize.images2d(images=img_gen, second=0.01, saveable=True, name='temp_generate_%d' % epoch)#, dtype=np.uint8)
 

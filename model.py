@@ -12,8 +12,8 @@ z_dim = 100         # Noise dimension
 t_dim = 128         # Text feature dimension # paper said 128
 image_size = 64     # 64 x 64
 c_dim = 3           # for rgb
-gf_dim = 64         # Number of conv in the first layer generator 64
-df_dim = 64         # Number of conv in the first layer discriminator 64
+gf_dim = 128        # Number of conv in the first layer generator
+df_dim = 64         # Number of conv in the first layer discriminator
 
 
 def rnn_embed(input_seqs, is_train, reuse, return_embed=True):
@@ -149,7 +149,182 @@ def discriminator_txt2img(input_images, net_rnn_embed=None, is_train=True, reuse
         net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)  # (64, 1)
     return net_h4, logits
 
+## large network for MSCOCO ====================================================
+def generator_txt2img_resnet(input_z, net_rnn_embed=None, is_train=True, reuse=False, is_large=False):
+    # Generator with ResNet : line 93 https://github.com/reedscot/icml2016/blob/master/main_cls.lua
+    s = image_size # output image size [64]
+    s2, s4, s8, s16 = int(s/2), int(s/4), int(s/8), int(s/16)
+    gf_dim = 400#256 #196    # <- gen filters in first conv layer [196] https://github.com/reedscot/icml2016/blob/master/scripts/train_coco.sh
 
+    w_init = tf.random_normal_initializer(stddev=0.02)  # 73
+    gamma_init = tf.random_normal_initializer(1., 0.02) # 74
+
+    with tf.variable_scope("generator", reuse=reuse):
+        tl.layers.set_name_reuse(reuse)
+        net_in = InputLayer(input_z, name='g_inputz')
+
+        if net_rnn_embed is not None:
+            net_rnn_embed = DenseLayer(net_rnn_embed, n_units=t_dim,            # 95, 96
+                    act=lambda x: tl.act.lrelu(x, 0.2), W_init = w_init, name='g_reduce_text/dense')
+            net_in = ConcatLayer([net_in, net_rnn_embed], concat_dim=1, name='g_concat_z_seq') # 103  (64, 356) - 100+256=356
+        else:
+            print("No text info is used, i.e. DCGAN")
+
+        ## 105 Note: ppwwyyxx - SpatialFullConvolution on 1x1 input is equivalent to a dense layer.
+        net_h0 = DenseLayer(net_in, gf_dim*8*s16*s16, act=tf.identity,          # 106 netG:add(SpatialFullConvolution(opt.nz + opt.nt, ngf * 8, 4, 4))
+                W_init=w_init, name='g_h0/dense')                               # (64, gf_dim*8*4*4)
+        net_h0 = ReshapeLayer(net_h0, [-1, s16, s16, gf_dim*8], name='g_h0/reshape')# 106  (64, 4, 4, gf_dim*8) = (ngf*8) x 4 x 4
+        net_h0 = BatchNormLayer(net_h0,  #act=tf.nn.relu,                       # 107 no relu
+                is_train=is_train, gamma_init=gamma_init, name='g_h0/batch_norm')
+
+        # 109 resnet
+        net_h1 = Conv2d(net_h0, gf_dim*2, (1, 1), (1, 1),                       # 112 (64, 4, 4, gf_dim*2)
+                padding='VALID', act=None, W_init=w_init, name='g_h1/conv2d')
+        net_h1 = BatchNormLayer(net_h1, act=tf.nn.relu, is_train=is_train,      # 113
+                gamma_init=gamma_init, name='g_h1/batch_norm')
+        net_h2 = Conv2d(net_h1, gf_dim*2, (3, 3), (1, 1),                       # 114
+                padding='SAME', act=None, W_init=w_init, name='g_h2/conv2d')
+        net_h2 = BatchNormLayer(net_h2, act=tf.nn.relu, is_train=is_train,      # 115
+                gamma_init=gamma_init, name='g_h2/batch_norm')
+        net_h3 = Conv2d(net_h2, gf_dim*8, (3, 3), (1, 1),                       # 116
+                padding='SAME', act=None, W_init=w_init, name='g_h3/conv2d')
+        net_h3 = BatchNormLayer(net_h3, # act=tf.nn.relu,                       # 117 no relu
+                is_train=is_train, gamma_init=gamma_init, name='g_h3/batch_norm')
+        net_h3.outputs = net_h3.outputs + net_h0.outputs                        # 121 (64, 4, 4, gf_dim*8) = (ngf*8) x 4 x 4
+        # 121 end resnet
+
+        if is_large is True: # 123 resnet
+            net_h = Conv2d(net_h3, gf_dim*2, (1, 1), (1, 1),                    # 127
+                    padding='VALID', act=None, W_init=w_init, name='g_h3/conv2d2')
+            net_h = BatchNormLayer(net_h, act=tf.nn.relu, is_train=is_train,    # 128
+                    gamma_init=gamma_init, name='g_h3/batch_norm2')
+            net_h = Conv2d(net_h, gf_dim*2, (3, 3), (1, 1),                     # 129
+                    padding='SAME', act=None, W_init=w_init, name='g_h3/conv2d3')
+            net_h = BatchNormLayer(net_h, act=tf.nn.relu, is_train=is_train,    # 130
+                    gamma_init=gamma_init, name='g_h3/batch_norm3')
+            net_h = Conv2d(net_h, gf_dim*8, (3, 3), (1, 1),                     # 131
+                    padding='SAME', act=None, W_init=w_init, name='g_h3/conv2d4')
+            net_h = BatchNormLayer(net_h, #act=tf.nn.relu,                      # 132
+                    is_train=is_train, gamma_init=gamma_init, name='g_h3/batch_norm4')
+            net_h3.outputs = net_h3.outputs + net_h.outputs                     # 136 (64, 4, 4, gf_dim*8) = (ngf*8) x 4 x 4
+        net_h3.outputs = tf.nn.relu(net_h3.outputs)                             # 139
+
+        net_h4 = DeConv2d(net_h3, gf_dim*4, (4, 4), out_size=(s8, s8), strides=(2, 2),# 142 (64, 8, 8, gf_dim*4) = (ngf*4) x 4 x 4
+                padding='SAME', batch_size=batch_size, act=None, W_init=w_init, name='g_h4/decon2d')
+        net_h4 = BatchNormLayer(net_h4,# act=tf.nn.relu,                        # 143 no relu
+                is_train=is_train, gamma_init=gamma_init, name='g_h4/batch_norm')
+
+        # 148 resnet (ngf*4) x 8 x 8 = (64, 8, 8, 512)
+        net_h5 = Conv2d(net_h4, gf_dim, (1, 1), (1, 1),                         # 148
+                padding='VALID', act=None, W_init=w_init, name='g_h5/conv2d')
+        net_h5 = BatchNormLayer(net_h5, act=tf.nn.relu, is_train=is_train,      # 149
+                gamma_init=gamma_init, name='g_h5/batch_norm')
+        net_h6 = Conv2d(net_h5, gf_dim, (3, 3), (1, 1),                         # 150
+                padding='SAME', act=None, W_init=w_init, name='g_h6/conv2d')
+        net_h6 = BatchNormLayer(net_h6, act=tf.nn.relu, is_train=is_train,      # 151
+                gamma_init=gamma_init, name='g_h6/batch_norm')
+        net_h7 = Conv2d(net_h6, gf_dim*4, (3, 3), (1, 1),                       # 152
+                padding='SAME', act=None, W_init=w_init, name='g_h7/conv2d')
+        net_h7 = BatchNormLayer(net_h7, #act=tf.nn.relu,                        # 153 no relu
+                is_train=is_train, gamma_init=gamma_init, name='g_h7/batch_norm')
+        net_h7.outputs = net_h4.outputs + net_h7.outputs                        # 157 (64, 8, 8, gf_dim*4) = (ngf*4) x 8 x 8
+        # 158 end resnet
+
+        if is_large is True:# 159 resnet
+            net_h = Conv2d(net_h7, gf_dim, (1, 1), (1, 1),                      # 163
+                   padding='VALID', act=None, W_init=w_init, name='g_h7/conv2d1')
+            net_h = BatchNormLayer(net_h, act=tf.nn.relu, is_train=is_train,    # 164
+                   gamma_init=gamma_init, name='g_h7/batch_norm1')
+            net_h = Conv2d(net_h, gf_dim, (3, 3), (1, 1),                       # 165
+                   padding='SAME', act=None, W_init=w_init, name='g_h7/conv2d2')
+            net_h = BatchNormLayer(net_h, act=tf.nn.relu, is_train=is_train,    # 166
+                   gamma_init=gamma_init, name='g_h7/batch_norm2')
+            net_h = Conv2d(net_h, gf_dim*4, (3, 3), (1, 1),                     # 167
+                   padding='SAME', act=None, W_init=w_init, name='g_h7/conv2d3')
+            net_h = BatchNormLayer(net_h, #act=tf.nn.relu,                      # 168 no relu
+                   is_train=is_train, gamma_init=gamma_init, name='g_h7/batch_norm3')
+            net_h7.outputs = net_h.outputs + net_h7.outputs                     # 172
+        net_h7.outputs = tf.nn.relu(net_h7.outputs)                             # 175 (64, 8, 8, gf_dim*4) = (ngf*4) x 8 x 8
+
+        net_h8 = DeConv2d(net_h7, gf_dim*2, (4, 4), out_size=(s4, s4), strides=(2, 2),# 178 (64, 16, 16, gf_dim*2) = (ngf*2) x 16 x 16
+                padding='SAME', batch_size=batch_size, act=None, W_init=w_init, name='g_h8/decon2d')
+        net_h8 = BatchNormLayer(net_h8, act=tf.nn.relu, is_train=is_train,      # 179, 180
+                gamma_init=gamma_init, name='g_h8/batch_norm')
+
+        net_h9 = DeConv2d(net_h8, gf_dim, (4, 4), out_size=(s2, s2), strides=(2, 2),# 183 (64, 32, 32, gf_dim) = (ngf) x 32 x 32
+                padding='SAME', batch_size=batch_size, act=None, W_init=w_init, name='g_h9/decon2d')
+        net_h9 = BatchNormLayer(net_h9, act=tf.nn.relu, is_train=is_train,      # 184
+                gamma_init=gamma_init, name='g_h9/batch_norm')
+
+        net_ho = DeConv2d(net_h9, c_dim, (4, 4), out_size=(s, s), strides=(2, 2),# 187 (64, 64, 64, 3)
+                padding='SAME', batch_size=batch_size, act=None, W_init=w_init, name='g_ho/decon2d')
+        logits = net_ho.outputs
+        net_ho.outputs = tf.nn.tanh(net_ho.outputs)                             # 188
+    return net_ho, logits
+
+def discriminator_txt2img_resnet(input_images, net_rnn_embed=None, is_train=True, reuse=False):
+    # Discriminator with ResNet : line 197 https://github.com/reedscot/icml2016/blob/master/main_cls.lua
+    w_init = tf.random_normal_initializer(stddev=0.02)  # 73
+    gamma_init=tf.random_normal_initializer(1., 0.02)   # 74
+    df_dim = 196         # number of conv in the first layer discriminator [196] https://github.com/reedscot/icml2016/blob/master/scripts/train_coco.sh
+
+    with tf.variable_scope("discriminator", reuse=reuse):
+        tl.layers.set_name_reuse(reuse)
+        # (nc) x 64 x 64
+        net_in = InputLayer(input_images, name='d_input/images')
+        net_h0 = Conv2d(net_in, df_dim, (4, 4), (2, 2), act=lambda x: tl.act.lrelu(x, 0.2), # 199
+                padding='SAME', W_init=w_init, name='d_h0/conv2d')              # (64, 32, 32, 64) = (ndf) x 32 x 32
+
+        net_h1 = Conv2d(net_h0, df_dim*2, (4, 4), (2, 2), act=None,             # 203  (64, 16, 16, df_dim*2) = (ndf*2) x 16 x 16
+                padding='SAME', W_init=w_init, name='d_h1/conv2d')
+        net_h1 = BatchNormLayer(net_h1, act=lambda x: tl.act.lrelu(x, 0.2),     # 204, 205
+                is_train=is_train, gamma_init=gamma_init, name='d_h1/batchnorm')
+        net_h2 = Conv2d(net_h1, df_dim*4, (4, 4), (2, 2), act=None,             # 208  (64, 8, 8, df_dim*4) = (ndf*4) x 8 x 8
+                padding='SAME', W_init=w_init, name='d_h2/conv2d')
+        net_h2 = BatchNormLayer(net_h2, act=lambda x: tl.act.lrelu(x, 0.2),     # 209, 210
+                is_train=is_train, gamma_init=gamma_init, name='d_h2/batchnorm')
+        net_h3 = Conv2d(net_h2, df_dim*8, (4, 4), (2, 2), act=None,             # 213  (64, 4, 4, df_dim*8) = (ndf*8) x 4 x 4
+                padding='SAME', W_init=w_init, name='d_h3/conv2d')
+        net_h3 = BatchNormLayer(net_h3, #act=lambda x: tl.act.lrelu(x, 0.2),    # 214, no lrelu
+                is_train=is_train, gamma_init=gamma_init, name='d_h3/batchnorm')
+
+        # 216 resnet
+        net_h = Conv2d(net_h3, df_dim*2, (1, 1), (1, 1), act=None,              # 219
+                padding='VALID', W_init=w_init, name='d_h3/conv2d2')
+        net_h = BatchNormLayer(net_h, act=lambda x: tl.act.lrelu(x, 0.2),       # 220
+                is_train=is_train, gamma_init=gamma_init, name='d_h3/batchnorm2')
+        net_h = Conv2d(net_h, df_dim*2, (3, 3), (1, 1), act=None,               # 221
+                padding='SAME', W_init=w_init, name='d_h3/conv2d3')
+        net_h = BatchNormLayer(net_h, act=lambda x: tl.act.lrelu(x, 0.2),       # 222
+                is_train=is_train, gamma_init=gamma_init, name='d_h3/batchnorm3')
+        net_h = Conv2d(net_h, df_dim*8, (3, 3), (1, 1), act=None,               # 223
+                padding='SAME', W_init=w_init, name='d_h3/conv2d4')
+        net_h = BatchNormLayer(net_h, #act=lambda x: tl.act.lrelu(x, 0.2),      # 224
+                is_train=is_train, gamma_init=gamma_init, name='d_h3/batchnorm4')
+        net_h3.outputs = tl.act.lrelu(net_h.outputs + net_h3.outputs, 0.2)      # 228, 230 (64, 4, 4, df_dim*8)
+        # 228 end resnet
+
+        if net_rnn_embed is not None:  # 232
+            net_reduced_text = DenseLayer(net_rnn_embed, n_units=t_dim,         # 233, 234
+                   act=lambda x: tl.act.lrelu(x, 0.2),
+                   W_init=w_init, name='d_reduce_txt/dense')
+            net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 1) # 235
+            net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 2) # 236
+            net_reduced_text.outputs = tf.tile(net_reduced_text.outputs, [1, 4, 4, 1], name='d_tiled_embeddings')
+            net_h3_concat = ConcatLayer([net_h3, net_reduced_text], concat_dim=3, name='d_h3_concat') # 242  if t_dim = 256 : (64, 4, 4, 786); if t_dim = 128 :(64, 4, 4, 640)
+            # 243 (ndf*8 + 128 or 256) x 4 x 4
+            net_h3 = Conv2d(net_h3_concat, df_dim*8, (1, 1), (1, 1),            # 244 (64, 4, 4, df_dim*8)
+                    padding='VALID', W_init=w_init, name='d_h3/conv2d_2')
+            net_h3 = BatchNormLayer(net_h3, act=lambda x: tl.act.lrelu(x, 0.2), # 245
+                    is_train=is_train, gamma_init=gamma_init, name='d_h3/batch_norm_2')
+        else:
+            print("No text info is used, i.e. DCGAN")
+        net_h4 = Conv2d(net_h3, 1, (4, 4), (1, 1), padding='VALID', W_init=w_init, name='d_h4/conv2d_2') # 246 (64, 1, 1, 1), if padding='SAME' (64, 4, 4, 1)
+        # 1 x 1 x 1
+        net_h4 = FlattenLayer(net_h4, name='d_h4/flatten')                      # 249 (64, 1)
+        logits = net_h4.outputs
+        net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)
+    return net_h4, logits
 
 ## DCGAN =======================================================================
 def generator_dcgan(inputs, net_rnn_embed=None, is_train=True, reuse=False):
