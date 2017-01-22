@@ -20,6 +20,13 @@ import random
 from utils import *
 from model import *
 
+
+is_deep = True
+if is_deep:
+    generator_txt2img = generator_txt2img_deep
+    discriminator_txt2img = discriminator_txt2img_deep
+
+
 os.system("mkdir samples")
 os.system("mkdir checkpoint")
 
@@ -115,6 +122,8 @@ g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_
 ####======================== DEFINE TRAIN OPTS ==========================###
 ## Cost   real == 1, fake == 0
 lr = 0.0002
+lr_decay = 0.5  # decay factor for adam, https://github.com/reedscot/icml2016/blob/master/main_cls_int.lua  https://github.com/reedscot/icml2016/blob/master/scripts/train_flowers.sh
+decay_every = 100  # https://github.com/reedscot/icml2016/blob/master/main_cls.lua
 beta1 = 0.5
 n_g_batch = 2   # update G, x time per batch
 c_vars = tl.layers.get_variables_with_name('cnn', True, True)
@@ -122,19 +131,14 @@ e_vars = tl.layers.get_variables_with_name('rnn', True, True)
 d_vars = tl.layers.get_variables_with_name('discriminator', True, True)
 g_vars = tl.layers.get_variables_with_name('generator', True, True)
 
-# grads = tf.gradients(d_loss, d_vars + e_vars)
-# grads, _ = tf.clip_by_global_norm(tf.gradients(d_loss, d_vars + e_vars), 30)
-# optimizer = tf.train.AdamOptimizer(1e-4, beta1=beta1)
-# d_optim = optimizer.apply_gradients(zip(grads, d_vars + e_vars))
-#
-# grads = tf.gradients(g_loss, g_vars)
-# grads, _ = tf.clip_by_global_norm(tf.gradients(g_loss, g_vars), 30)
-# optimizer = tf.train.AdamOptimizer(1e-4, beta1=beta1)
-# g_optim = optimizer.apply_gradients(zip(grads, g_vars))
-
-d_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(d_loss, var_list=d_vars )
-g_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(g_loss, var_list=g_vars )
-e_optim = tf.train.AdamOptimizer(lr, beta1=beta1).minimize(e_loss, var_list=e_vars + c_vars)
+with tf.variable_scope('learning_rate'):
+    lr_v = tf.Variable(lr, trainable=False)
+d_optim = tf.train.AdamOptimizer(lr_v, beta1=beta1).minimize(d_loss, var_list=d_vars )
+g_optim = tf.train.AdamOptimizer(lr_v, beta1=beta1).minimize(g_loss, var_list=g_vars )
+# e_optim = tf.train.AdamOptimizer(lr_v, beta1=beta1).minimize(e_loss, var_list=e_vars + c_vars)
+grads, _ = tf.clip_by_global_norm(tf.gradients(e_loss, e_vars + c_vars), 10)
+optimizer = tf.train.AdamOptimizer(lr_v, beta1=beta1)# optimizer = tf.train.GradientDescentOptimizer(lre)
+e_optim = optimizer.apply_gradients(zip(grads, e_vars + c_vars))
 
 ###============================ TRAINING ====================================###
 sess = tf.InteractiveSession()
@@ -202,11 +206,22 @@ for i, sentence in enumerate(sample_sentence):
 sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
 
 
-n_epoch = 500   # 600 when pre-trained rnn
+n_epoch = 1000   # 600 when pre-trained rnn
 print_freq = 1
 n_batch_epoch = int(n_images / batch_size)
 for epoch in range(n_epoch+1):
     start_time = time.time()
+
+    if epoch !=0 and (epoch % decay_every == 0):
+        new_lr_decay = lr_decay ** (epoch // decay_every)
+        sess.run(tf.assign(lr_v, lr * new_lr_decay))
+        log = " ** new learning rate: %f" % (lr * new_lr_decay)
+        print(log)
+        # logging.debug(log)
+    elif epoch == 0:
+        log = " ** init lr: %f  decay_every_epoch: %d, lr_decay: %f" % (lr, decay_every, lr_decay)
+        print(log)
+
     for step in range(n_batch_epoch):
         step_time = time.time()
         ## get matched text
@@ -244,7 +259,7 @@ for epoch in range(n_epoch+1):
                                             })
             # total_e_loss += errE
         else:
-            errE = int(0)
+            errE = 0
 
         ## updates D
         b_real_images = threading_data(b_real_images, prepro_img, mode='train')   # [0, 255] --> [-1, 1]
@@ -294,7 +309,7 @@ for epoch in range(n_epoch+1):
         # save_images(b_real_images, [8, 8], 'temp_real_image.png')
         # save_images(b_wrong_images, [8, 8], 'temp_wrong_image.png')
 
-    if (epoch != 0) and (epoch % 5) == 0:
+    if (epoch != 0) and (epoch % 100) == 0:
         tl.files.save_npz(net_cnn.all_params, name=net_c_name, sess=sess)
         tl.files.save_npz(net_rnn.all_params, name=net_e_name, sess=sess)
         tl.files.save_npz(net_g.all_params, name=net_g_name, sess=sess)
