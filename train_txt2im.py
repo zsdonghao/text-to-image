@@ -125,7 +125,7 @@ lr = 0.0002
 lr_decay = 0.5  # decay factor for adam, https://github.com/reedscot/icml2016/blob/master/main_cls_int.lua  https://github.com/reedscot/icml2016/blob/master/scripts/train_flowers.sh
 decay_every = 100  # https://github.com/reedscot/icml2016/blob/master/main_cls.lua
 beta1 = 0.5
-n_g_batch = 2   # update G, x time per batch
+
 c_vars = tl.layers.get_variables_with_name('cnn', True, True)
 e_vars = tl.layers.get_variables_with_name('rnn', True, True)
 d_vars = tl.layers.get_variables_with_name('discriminator', True, True)
@@ -270,7 +270,7 @@ for epoch in range(n_epoch+1):
                         t_real_caption : b_real_caption,    # remove if DCGAN only
                         t_z : b_z})
         ## updates G
-        for _ in range(n_g_batch):
+        for _ in range(2):
             errG, _ = sess.run([g_loss, g_optim], feed_dict={
                             t_real_caption : b_real_caption,    # remove if DCGAN only
                             t_z : b_z})
