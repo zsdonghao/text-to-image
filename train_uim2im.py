@@ -27,12 +27,10 @@ import argparse
 from data_loader import *
 
 
-# is_deep = True
-# if is_deep:
-#     generator_txt2img = generator_txt2img_deep
-#     discriminator_txt2img = discriminator_txt2img_deep
-#     cnn_encoder = cnn_encoder_resnet # use shallow cnn for text-image mapping, deep cnn for projection
-
+is_deep = True
+if is_deep:
+    # generator_txt2img = generator_txt2img_deep
+    cnn_encoder = cnn_encoder_deep # use shallow cnn for text-image mapping, deep cnn for projection
 
 def change_id(sentences, id_list=[], target_id=0):
     b_sentences = copy.deepcopy(sentences)
@@ -43,9 +41,15 @@ def change_id(sentences, id_list=[], target_id=0):
                 break   # only change one id in one sentence
     return b_sentences
 
+def main_train_stackGAN():
+    pass
+
 
 def main_train_imageEncoder():
-    # flower dataset 3000: 0.8; 8000: 0.6; 20000: 0.5; 800000: 0.16
+    # flower dataset
+    # no deep        3000: 0.8; 8000: 0.6; 20000: 0.5; 800000: 0.16
+    # deep G D E     3000: 0.8; 6000: 0.8; 10000:0.78; 20000: 0.75
+    # deep E         1000: 0.6; 3000: 0.5; 6000: 0.48  20000: 0.38 min(0.34)
     t_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='caption_input')
     t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
 
@@ -70,7 +74,7 @@ def main_train_imageEncoder():
 
     lr = 0.0002
     lr_decay = 0.5
-    decay_every = 10000
+    decay_every = 5000
     beta1 = 0.5
     n_step = 100000 #* 100
     sample_size = batch_size
@@ -242,7 +246,7 @@ def main_translation():
         idexs = get_random_int(min=0, max=n_captions_train-1, number=batch_size)
             # # idexs = list(range(0, batch_size*n_captions_per_image, n_captions_per_image))   #
         b_images = images_train[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real image
-        b_images = threading_data(b_images, prepro_img, mode='translation')                                             # real image
+        b_images = threading_data(b_images, prepro_img, mode='translation')                                       # real image
         b_caption = captions_ids_train[idexs]   # for debug sample_sentence = b_caption
         b_caption = tl.prepro.pad_sequences(b_caption, padding='post') # for debug sample_sentence = b_caption
 
@@ -255,7 +259,7 @@ def main_translation():
         save_images(b_images, [8, 8], 'samples/step3/source_{:02d}.png'.format(i))
         sample_sentence = change_id(b_caption, color_ids, vocab.word_to_id("blue"))
         # sample_sentence[0] = [vocab.word_to_id("blue")]
-        # sample_sentence = b_caption # for debug: output same image # IMPORTANT
+        # sample_sentence = b_caption                                           # don't change the sentences
         for idx, caption in enumerate(b_caption):
             print("%d-%d: source: %s" % (i, idx, [vocab.id_to_word(word) for word in caption]))
             print("%d-%d: target: %s" % (i, idx, [vocab.id_to_word(word) for word in sample_sentence[idx]]))

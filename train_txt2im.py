@@ -21,10 +21,10 @@ from utils import *
 from model import *
 
 
-is_deep = True
-if is_deep:
-    generator_txt2img = generator_txt2img_deep
-    discriminator_txt2img = discriminator_txt2img_deep
+# is_deep = True
+# if is_deep:
+#     generator_txt2img = generator_txt2img_deep
+#     discriminator_txt2img = discriminator_txt2img_deep
 
 
 os.system("mkdir samples")

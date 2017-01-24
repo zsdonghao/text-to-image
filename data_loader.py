@@ -70,6 +70,7 @@ if dataset == '102flowers':
     print(" * %d images found, start loading and resizing ..." % len(imgs_title_list))
     s = time.time()
 
+    # time.sleep(10)
     # def get_resize_image(name):   # fail
     #         img = scipy.misc.imread( os.path.join(img_dir, name) )
     #         img = tl.prepro.imresize(img, size=[64, 64])    # (64, 64, 3)
@@ -78,6 +79,7 @@ if dataset == '102flowers':
     # images = tl.prepro.threading_data(imgs_title_list, fn=get_resize_image)
     images = []
     for name in imgs_title_list:
+        # print(name)
         img = scipy.misc.imread( os.path.join(img_dir, name) )
         img = tl.prepro.imresize(img, size=[64, 64])    # (64, 64, 3)
         img = img.astype(np.float32)
@@ -119,11 +121,12 @@ if dataset == '102flowers':
     # print_dict(captions_dict)
 
     # ## generate a random batch
-    # idexs = get_random_int(0, n_captions, batch_size)
-    # idexs = [i for i in range(0,100)]
+    # batch_size = 64
+    # idexs = get_random_int(0, n_captions_test, batch_size)
+    # # idexs = [i for i in range(0,100)]
     # print(idexs)
-    # b_seqs = captions_ids[idexs]
-    # b_images = images[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]
+    # b_seqs = captions_ids_test[idexs]
+    # b_images = images_test[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]
     # print("before padding %s" % b_seqs)
     # b_seqs = tl.prepro.pad_sequences(b_seqs, padding='post')
     # print("after padding %s" % b_seqs)
@@ -131,5 +134,7 @@ if dataset == '102flowers':
     # for ids in b_seqs:
     #     print([vocab.id_to_word(id) for id in ids])
     # print(np.max(b_images), np.min(b_images), b_images.shape)
-    # tl.visualize.images2d(b_images, second=5, saveable=True, name='temp2')
+    # from utils import *
+    # save_images(b_images, [8, 8], 'temp2.png')
+    # # tl.visualize.images2d(b_images, second=5, saveable=True, name='temp2')
     # exit()

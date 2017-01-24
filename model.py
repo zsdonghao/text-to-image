@@ -391,9 +391,11 @@ def cnn_encoder_deep(input_images, is_train=True, reuse=False, name='cnn'):
         #         is_train=is_train, gamma_init=gamma_init, name='p_h3/batchnorm4')
         # 228 end resnet
 
-        net_h4 = Conv2d(net_h3, df_dim*2, (4, 4), (1, 1), padding='SAME', W_init=w_init, name='p_h4/conv2d_2')
-        # 1 x 1 x 1
-        net_h4 = FlattenLayer(net_h4, name='p_h4/flatten')                      # 249 (64, 1)
+        net_h4 = Conv2d(net_h3, df_dim*2, (2, 2), (1, 1), padding='VALID', W_init=w_init, name='p_h4/conv2d_2')
+        # net_h4 = Conv2d(net_h3, df_dim*2, (4, 4), (1, 1), padding='VALID', W_init=w_init, name='p_h4/conv2d_2')
+
+        net_h4 = FlattenLayer(net_h4, name='p_h4/flatten')
+        # print(net_h4.outputs)
         net_h4 = DenseLayer(net_h4, n_units=(t_dim if name=="cnn" else z_dim),
             act=tf.identity,
             W_init = w_init,
