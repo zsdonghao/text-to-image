@@ -42,7 +42,62 @@ def change_id(sentences, id_list=[], target_id=0):
     return b_sentences
 
 def main_train_stackGAN():
-    pass
+    def stackG(inputs, is_train, reuse):
+        with tf.variable_scope("stackG", reuse=reuse):
+            tl.layers.set_name_reuse(reuse)
+            net_in = InputLayer(inputs, name='stackG_input/images')
+
+        return network
+
+    stackD = discriminator_txt2img
+
+    t_real_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'real_image')
+    t_wrong_image = tf.placeholder('float32', [batch_size ,image_size, image_size, 3 ], name = 'wrong_image')
+    t_real_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='real_caption_input')
+    t_wrong_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='wrong_caption_input')
+    t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
+
+    net_fake_real_image, _ = generator_txt2img(t_z,
+                    rnn_embed(t_real_caption, is_train=False, reuse=False, return_embed=False),
+                    is_train=False, reuse=False)
+
+    net_fake_wrong_image, _ = generator_txt2img(t_z,
+                    rnn_embed(t_wrong_caption, is_train=False, reuse=True, return_embed=False),
+                    is_train=False, reuse=True)
+
+    net_rnn = rnn_embed(t_real_caption, is_train=False, reuse=True, return_embed=False)
+    net_fake_image, _ = stackG(net_image.outputs,
+                    net_rnn,
+                    is_train=True, reuse=False)
+    net_d, disc_fake_image_logits = stackD(
+                    net_fake_image.outputs,
+                    net_rnn,
+                    is_train=True, reuse=False)
+    _, disc_real_image_logits = stackD(
+                    t_real_image,
+                    net_rnn,
+                    is_train=True, reuse=True)
+    _, disc_wrong_image_logits = stackD( # CLS
+                    t_wrong_image,
+                    net_rnn,
+                    is_train=True, reuse=True)
+
+    ## testing inference for txt2img
+    net_g, _ = stackG(net_fake_real_image.outputs,
+                    rnn_embed(t_real_caption, is_train=False, reuse=True, return_embed=False), # remove if DCGAN only
+                    is_train=False, reuse=True)
+
+    d_loss1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real_image_logits, tf.ones_like(disc_real_image_logits)))
+    d_loss2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_wrong_image_logits, tf.zeros_like(disc_wrong_image_logits)))    # for CLS, if set it to zero, it is the same with normal DCGAN
+    d_loss3 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.zeros_like(disc_fake_image_logits)))
+
+    d_loss = d_loss1 + d_loss2 + d_loss3
+
+    g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.ones_like(disc_fake_image_logits))) # real == 1, fake == 0
+
+
+
+
 
 
 def main_train_imageEncoder():
@@ -259,7 +314,7 @@ def main_translation():
         save_images(b_images, [8, 8], 'samples/step3/source_{:02d}.png'.format(i))
         sample_sentence = change_id(b_caption, color_ids, vocab.word_to_id("blue"))
         # sample_sentence[0] = [vocab.word_to_id("blue")]
-        # sample_sentence = b_caption                                           # don't change the sentences
+        # sample_sentence = b_caption                                               # reconstruct from same sentences, test performance of reconstruction
         for idx, caption in enumerate(b_caption):
             print("%d-%d: source: %s" % (i, idx, [vocab.id_to_word(word) for word in caption]))
             print("%d-%d: target: %s" % (i, idx, [vocab.id_to_word(word) for word in sample_sentence[idx]]))
