@@ -42,14 +42,6 @@ def change_id(sentences, id_list=[], target_id=0):
     return b_sentences
 
 def main_train_stackGAN():
-    def stackG(inputs, is_train, reuse):
-        with tf.variable_scope("stackG", reuse=reuse):
-            tl.layers.set_name_reuse(reuse)
-            net_in = InputLayer(inputs, name='stackG_input/images')
-
-        return network
-
-    stackD = discriminator_txt2img
 
     t_real_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'real_image')
     t_wrong_image = tf.placeholder('float32', [batch_size ,image_size, image_size, 3 ], name = 'wrong_image')
@@ -57,16 +49,12 @@ def main_train_stackGAN():
     t_wrong_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='wrong_caption_input')
     t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
 
-    net_fake_real_image, _ = generator_txt2img(t_z,
+    net_fake_image_g1, _ = generator_txt2img(t_z,
                     rnn_embed(t_real_caption, is_train=False, reuse=False, return_embed=False),
                     is_train=False, reuse=False)
 
-    net_fake_wrong_image, _ = generator_txt2img(t_z,
-                    rnn_embed(t_wrong_caption, is_train=False, reuse=True, return_embed=False),
-                    is_train=False, reuse=True)
-
     net_rnn = rnn_embed(t_real_caption, is_train=False, reuse=True, return_embed=False)
-    net_fake_image, _ = stackG(net_image.outputs,
+    net_fake_image, _ = stackG(net_fake_image_g1.outputs,
                     net_rnn,
                     is_train=True, reuse=False)
     net_d, disc_fake_image_logits = stackD(
@@ -83,7 +71,7 @@ def main_train_stackGAN():
                     is_train=True, reuse=True)
 
     ## testing inference for txt2img
-    net_g, _ = stackG(net_fake_real_image.outputs,
+    net_gII, _ = stackG(net_fake_image_g1.outputs,
                     rnn_embed(t_real_caption, is_train=False, reuse=True, return_embed=False), # remove if DCGAN only
                     is_train=False, reuse=True)
 
@@ -95,9 +83,171 @@ def main_train_stackGAN():
 
     g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.ones_like(disc_fake_image_logits))) # real == 1, fake == 0
 
+    d_vars = tl.layers.get_variables_with_name('stackD', True, True)
+    g_vars = tl.layers.get_variables_with_name('stackG', True, True)
+
+    lr = 0.0002
+    lr_decay = 0.5
+    decay_every = 100
+    beta1 = 0.5
+
+    with tf.variable_scope('learning_rate'):
+        lr_v = tf.Variable(lr, trainable=False)
+    d_optim = tf.train.AdamOptimizer(lr_v, beta1=beta1).minimize(d_loss, var_list=d_vars )
+    g_optim = tf.train.AdamOptimizer(lr_v, beta1=beta1).minimize(g_loss, var_list=g_vars )
+
+    sess = tf.Session()
+    tl.layers.initialize_global_variables(sess)
+
+    # load the latest checkpoints
+    save_dir = "checkpoint"
+    # os.system("mkdir checkpoint/step2")
+    os.system("mkdir samples/stackGAN")
+    net_e_name = os.path.join(save_dir, 'net_e.npz')
+    net_g_name = os.path.join(save_dir, 'net_g.npz')
+
+    if not os.path.exists(net_e_name):
+        print("[!] Loading RNN checkpoint failed!")
+    else:
+        net_e_loaded_params = tl.files.load_npz(name=net_e_name)
+        tl.files.assign_params(sess, net_e_loaded_params, net_rnn)
+        print("[*] Loading RNN checkpoint SUCCESS!")
+
+    if not os.path.exists(net_g_name):
+        print("[!] Loading G I checkpoint failed!")
+    else:
+        net_g_loaded_params = tl.files.load_npz(name=net_g_name)
+        tl.files.assign_params(sess, net_g_loaded_params, net_fake_image_g1)
+        print("[*] Loading G I checkpoint SUCCESS!")
+
+    net_stackG_name = os.path.join(save_dir, 'net_stackG.npz')
+    net_stackD_name = os.path.join(save_dir, 'net_stackD.npz')
+    if not os.path.exists(net_stackG_name):
+        print("[!] Loading G II checkpoint failed!")
+    else:
+        net_g_loaded_params = tl.files.load_npz(name=net_stackG_name)
+        tl.files.assign_params(sess, net_g_loaded_params, net_gII)
+        print("[*] Loading G II checkpoint SUCCESS!")
+    if not os.path.exists(net_stackD_name):
+        print("[!] Loading D II checkpoint failed!")
+        try:
+            # as the architecture of D II equal to D I, you can initialize D II by using D I parameters.
+            net_d_loaded_params = tl.files.load_npz(name="checkpoint/net_d.npz")
+            tl.files.assign_params(sess, net_d_loaded_params, net_d)
+            print("[*] Loading D II from D I SUCCESS!")
+        except:
+            print("[*] Loading D II from D I failed!")
+    else:
+        net_d_loaded_params = tl.files.load_npz(name=net_stackD_name)
+        tl.files.assign_params(sess, net_d_loaded_params, net_d)
+        print("[*] Loading D II checkpoint SUCCESS!")
+
+    # # as the architecture of D II equal to D I, you can initialize D II by using D I parameters.
+    # net_d_loaded_params = tl.files.load_npz(name="checkpoint/net_d.npz")
+    # tl.files.assign_params(sess, net_d_loaded_params, net_d)
+    # print("[*] Loading D II from D I SUCCESS!")
+
+    sample_size = batch_size
+    sample_seed = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
+    sample_sentence = ["the flower shown has yellow anther red pistil and bright red petals."] * int(sample_size/8) + \
+                      ["this flower has petals that are yellow, white and purple and has dark lines"] * int(sample_size/8) + \
+                      ["the petals on this flower are white with a yellow center"] * int(sample_size/8) + \
+                      ["this flower has a lot of small round pink petals."] * int(sample_size/8) + \
+                      ["this flower is orange in color, and has petals that are ruffled and rounded."] * int(sample_size/8) + \
+                      ["the flower has yellow petals and the center of it is brown."] * int(sample_size/8) + \
+                      ["this flower has petals that are blue and white."] * int(sample_size/8) +\
+                      ["these white flowers have petals that start off white in color and end in a white towards the tips."] * int(sample_size/8)
+
+    for i, sentence in enumerate(sample_sentence):
+        print("seed: %s" % sentence)
+        sample_sentence[i] = [vocab.word_to_id(word) for word in nltk.tokenize.word_tokenize(sentence)] + [vocab.end_id]    # add END_ID
+    sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
 
 
+    n_epoch = 1000   # 600 when pre-trained rnn
+    print_freq = 1
+    n_batch_epoch = int(n_images / batch_size)
+    for epoch in range(n_epoch+1):
+        start_time = time.time()
 
+        if epoch !=0 and (epoch % decay_every == 0):
+            new_lr_decay = lr_decay ** (epoch // decay_every)
+            sess.run(tf.assign(lr_v, lr * new_lr_decay))
+            log = " ** new learning rate: %f" % (lr * new_lr_decay)
+            print(log)
+            # logging.debug(log)
+        elif epoch == 0:
+            log = " ** init lr: %f  decay_every_epoch: %d, lr_decay: %f" % (lr, decay_every, lr_decay)
+            print(log)
+
+        for step in range(n_batch_epoch):
+            step_time = time.time()
+            ## get matched text
+            idexs = get_random_int(min=0, max=n_captions_train-1, number=batch_size)
+            b_real_caption = captions_ids_train[idexs]                                                                      # remove if DCGAN only
+            b_real_caption = tl.prepro.pad_sequences(b_real_caption, padding='post')     # matched text  (64, any)    # remove if DCGAN only
+            ## get real image
+            b_real_images = images_train[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real images   (64, 64, 64, 3)
+            ## get wrong caption
+            idexs = get_random_int(min=0, max=n_captions_train-1, number=batch_size)
+            b_wrong_caption = captions_ids[idexs]
+            b_wrong_caption = tl.prepro.pad_sequences(b_wrong_caption, padding='post')                                    # mismatched text
+            ## get wrong image
+            idexs2 = get_random_int(min=0, max=n_images_train-1, number=batch_size)        # remove if DCGAN only
+            b_wrong_images = images_train[idexs2]                                               # remove if DCGAN only
+            ## get noise
+            b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
+                # b_z = np.random.uniform(low=-1, high=1, size=[batch_size, z_dim]).astype(np.float32)       # paper said [0, 1], but [-1, 1] is better
+            ## check data
+            # print(np.min(b_real_images), np.max(b_real_images), b_real_images.shape)    # [0, 1] (64, 64, 64, 3)
+            # for i, seq in enumerate(b_real_caption):
+            #     # print(seq)
+            #     print(i, " ".join([vocab.id_to_word(id) for id in seq]))
+            # save_images(b_real_images, [8, 8], 'real_image.png')
+            # exit()
+
+            ## updates D
+            b_real_images = threading_data(b_real_images, prepro_img, mode='train')   # [0, 255] --> [-1, 1]
+            b_wrong_images = threading_data(b_wrong_images, prepro_img, mode='train')
+            errD, _ = sess.run([d_loss, d_optim], feed_dict={
+                            t_real_image : b_real_images,
+                            t_wrong_image : b_wrong_images,
+                            t_real_caption : b_real_caption,
+                            t_z : b_z})
+
+            ## updates G
+            for _ in range(1):
+                errG, _ = sess.run([g_loss, g_optim], feed_dict={
+                                t_real_caption : b_real_caption,
+                                t_z : b_z})
+
+            print("Epoch: [%2d/%2d] [%4d/%4d] time: %4.4fs, d_loss: %.8f, g_loss: %.8f" \
+                        % (epoch, n_epoch, step, n_batch_epoch, time.time() - step_time, errD, errG))
+
+        if (epoch + 1) % print_freq == 0:
+            print(" ** Epoch %d took %fs" % (epoch, time.time()-start_time))
+            img_gen, rnn_out = sess.run([net_gII.outputs, net_rnn.outputs],
+                                        feed_dict={
+                                        t_real_caption : sample_sentence,  # remove if DCGAN only
+                                        t_z : sample_seed})
+
+            print('rnn:', np.min(rnn_out[0]), np.max(rnn_out[0]))   # -1.4121389, 1.4108921
+            print('real:', b_real_images[0].shape, np.min(b_real_images[0]), np.max(b_real_images[0]))
+            print('wrong:', b_wrong_images[0].shape, np.min(b_wrong_images[0]), np.max(b_wrong_images[0]))
+            print('generate:', img_gen[0].shape, np.min(img_gen[0]), np.max(img_gen[0]))
+            img_gen = threading_data(img_gen, prepro_img, mode='rescale')
+            save_images(img_gen, [8, 8], '{}/stackGAN/train_{:02d}.png'.format('samples', epoch))
+
+        if (epoch != 0) and (epoch % 20) == 0:
+            tl.files.save_npz(net_gII.all_params, name=net_stackG_name, sess=sess)
+            tl.files.save_npz(net_d.all_params, name=net_stackD_name, sess=sess)
+            print("[*] Saving checkpoints SUCCESS!")
+
+        if (epoch != 0) and (epoch % 100) == 0:
+            net_stackG_name_e = os.path.join(save_dir, 'net_stackG_%d.npz' % epoch)
+            net_stackD_name_e = os.path.join(save_dir, 'net_stackD_%d.npz' % epoch)
+            tl.files.save_npz(net_gII.all_params, name=net_stackG_name_e, sess=sess)
+            tl.files.save_npz(net_d.all_params, name=net_stackD_name_e, sess=sess)
 
 
 def main_train_imageEncoder():
@@ -361,6 +511,9 @@ if __name__ == '__main__':
 
     elif args.train_step == "translation":
         main_translation()
+
+    elif args.train_step == "stackGAN":
+        main_train_stackGAN()
 
 
 

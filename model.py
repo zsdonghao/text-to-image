@@ -638,6 +638,239 @@ def cnn_encoder_resnet(input_images, is_train=True, reuse=False, name='cnn'):
         # net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)
     return net_h4
 
+## stack GAN ===================================================================
+def stackG(inputs, net_rnn, is_train, reuse):
+    """ G for stack II, input 64x64, output 64x64 """
+    # line 185 https://github.com/hanzhanggit/StackGAN/blob/master/stageII/model.py
+    #           https://github.com/hanzhanggit/StackGAN/blob/master/misc/custom_ops.py
+    gf_dim = 128
+    # df_dim = 128
+    w_init = tf.random_normal_initializer(stddev=0.02)
+    b_init = None # tf.constant_initializer(value=0.0)
+    gamma_init=tf.random_normal_initializer(1., 0.02)
+
+    with tf.variable_scope("stackG", reuse=reuse):
+        tl.layers.set_name_reuse(reuse)
+        net_in = InputLayer(inputs, name='stackG_input/images')
+        # net_h0 = Conv2d(net_in, df_dim, (52, 5), (2, 2), act=lambda x: tl.act.lrelu(x, 0.2),
+        #                 padding='SAME', W_init=w_init, name='stackG_h0/conv2d')
+        ## downsampling
+        net_h0 = Conv2d(net_in, gf_dim, (3, 3), (1, 1), act=tf.nn.relu,
+                padding='SAME', W_init=w_init, name='stackG_p0/conv2d')
+
+        net_h1 = Conv2d(net_h0, gf_dim*2, (4, 4), (2, 2), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='stackG_p1/conv2d')
+        net_h1 = BatchNormLayer(net_h1, act=tf.nn.relu,
+                is_train=is_train, gamma_init=gamma_init, name='stackG_p1/batchnorm')
+        net_h2 = Conv2d(net_h1, gf_dim*4, (4, 4), (2, 2), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='stackG_p2/conv2d')
+        net_h2 = BatchNormLayer(net_h2, act=tf.nn.relu,
+                is_train=is_train, gamma_init=gamma_init, name='stackG_p2/batchnorm')
+
+        # print(net_h2.outputs)
+    # def hr_g_encode_image(self, x_var):
+    #     output_tensor = \
+    #         (pt.wrap(x_var).  # -->s * s * 3
+    #          custom_conv2d(self.gf_dim, k_h=3, k_w=3, d_h=1, d_w=1).  # s * s * gf_dim
+    #          apply(tf.nn.relu).
+    #          custom_conv2d(self.gf_dim * 2, k_h=4, k_w=4).  # s2 * s2 * gf_dim * 2
+    #          conv_batch_norm().
+    #          apply(tf.nn.relu).
+    #          custom_conv2d(self.gf_dim * 4, k_h=4, k_w=4).  # s4 * s4 * gf_dim * 4
+    #          conv_batch_norm().
+    #          apply(tf.nn.relu))
+    #     return output_tensor
+
+        # exit()
+        ## join image and text
+        if net_rnn is not None:
+            net_rnn = InputLayer(net_rnn.outputs, name='stackG_join/input_text')
+            net_reduced_text = DenseLayer(net_rnn, n_units=t_dim,
+                   act=lambda x: tl.act.lrelu(x, 0.2),
+                   W_init=w_init, b_init=None, name='stackG_join_reduce_txt/dense')
+            # print('t1',net_reduced_text.outputs)
+            # net_reduced_text = net_rnn_embed  # if reduce_txt in rnn_embed
+            net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 1)  # you can use ExpandDimsLayer and TileLayer instead
+            net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 2)
+            net_reduced_text.outputs = tf.tile(net_reduced_text.outputs, [1, 16, 16, 1], name='stackG_join_tile')
+            # print('t2',net_reduced_text.outputs)
+            net_h3_concat = ConcatLayer([net_h2, net_reduced_text], concat_dim=3, name='stackG_h3_concat') # (64, 4, 4, 640)
+            # print('con1',net_h3_concat.outputs)
+            # net_h3_concat = net_h3 # no text info
+            net_h3 = Conv2d(net_h3_concat, gf_dim*4, (3, 3), (1, 1),
+                   padding='SAME', W_init=w_init, b_init=b_init, name='stackG_join/conv2d_2')
+            # print('con2',net_h3.outputs)
+            net_h3 = BatchNormLayer(net_h3, act=tf.nn.relu,
+                   is_train=is_train, gamma_init=gamma_init, name='stackG_join/batch_norm_2')
+        else:
+            print("No text info will be used, i.e. normal DCGAN")
+    # def hr_g_joint_img_text(self, x_c_code):
+    #     output_tensor = \
+    #         (pt.wrap(x_c_code).  # -->s4 * s4 * (ef_dim+gf_dim*4)
+    #          custom_conv2d(self.gf_dim * 4, k_h=3, k_w=3, d_h=1, d_w=1).  # s4 * s4 * gf_dim * 4
+    #          conv_batch_norm().
+    #          apply(tf.nn.relu))
+    #     return output_tensor
+        # print(net_h3.outputs)
+
+        ## residual block x 4(for 64--256)
+        for i in range(2):
+            net_h = Conv2d(net_h3, gf_dim*4, (3, 3), (1, 1),
+                   padding='SAME', W_init=w_init, b_init=b_init, name='stackG_residual{}/conv2d_1'.format(i))
+            net_h = BatchNormLayer(net_h, act=tf.nn.relu,
+                   is_train=is_train, gamma_init=gamma_init, name='stackG_residual{}/batch_norm_1'.format(i))
+            net_h = Conv2d(net_h, gf_dim*4, (3, 3), (1, 1),
+                   padding='SAME', W_init=w_init, b_init=b_init, name='stackG_residual{}/conv2d_2'.format(i))
+            net_h = BatchNormLayer(net_h, #act=tf.nn.relu,
+                   is_train=is_train, gamma_init=gamma_init, name='stackG_residual{}/batch_norm_2'.format(i))
+            net_h3.outputs = tf.nn.relu(net_h3.outputs + net_h.outputs)
+    # def residual_block(self, x_c_code):
+    #     node0_0 = pt.wrap(x_c_code)  # -->s4 * s4 * gf_dim * 4
+    #     node0_1 = \
+    #         (pt.wrap(x_c_code).  # -->s4 * s4 * gf_dim * 4
+    #          custom_conv2d(self.gf_dim * 4, k_h=3, k_w=3, d_h=1, d_w=1).
+    #          conv_batch_norm().
+    #          apply(tf.nn.relu).
+    #          custom_conv2d(self.gf_dim * 4, k_h=3, k_w=3, d_h=1, d_w=1).
+    #          conv_batch_norm())
+    #     output_tensor = \
+    #         (node0_0.
+    #          apply(tf.add, node0_1).
+    #          apply(tf.nn.relu))
+    #     return output_tensor
+        # print(net_h3.outputs)
+
+        ## upsampling 16x16-->64x64
+        net_h4 = DeConv2d(net_h3, gf_dim*2, (4, 4), out_size=(32, 32), strides=(2, 2),    # 16x16--32x32
+                padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_1')
+        net_h4 = Conv2d(net_h4, gf_dim*2, (3, 3), (1, 1),
+               padding='SAME', W_init=w_init, b_init=b_init, name='stackG_up/conv2d_1')
+        net_h4 = BatchNormLayer(net_h4, act=tf.nn.relu,
+                is_train=is_train, gamma_init=gamma_init, name='stackG_up/batch_norm_1')
+
+        net_h4 = DeConv2d(net_h4, gf_dim, (4, 4), out_size=(64, 64), strides=(2, 2),    # 32x32--64x64
+                padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_2')
+        net_h4 = Conv2d(net_h4, gf_dim, (3, 3), (1, 1),
+               padding='SAME', W_init=w_init, b_init=b_init, name='stackG_up/conv2d_2')
+        net_h4 = BatchNormLayer(net_h4, act=tf.nn.relu,
+                is_train=is_train, gamma_init=gamma_init, name='stackG_up/batch_norm_2')
+
+        # print(net_h4.outputs)
+
+        ## down to 3 channels
+        network = Conv2d(net_h4, 3, (3, 3), (1, 1),
+               padding='SAME', W_init=w_init, b_init=b_init, name='stackG_out/conv2d')
+
+        # print(network.outputs)
+        # exit()
+    # def hr_generator(self, x_c_code):  # their code is for 64x64-->256x256
+    #     output_tensor = \
+    #         (pt.wrap(x_c_code).  # -->s4 * s4 * gf_dim*4
+    #          # custom_deconv2d([0, self.s2, self.s2, self.gf_dim * 2], k_h=4, k_w=4).  # -->s2 * s2 * gf_dim*2
+    #          apply(tf.image.resize_nearest_neighbor, [self.s2, self.s2]).
+    #          custom_conv2d(self.gf_dim * 2, k_h=3, k_w=3, d_h=1, d_w=1).
+    #          conv_batch_norm().
+    #          apply(tf.nn.relu).
+    #          # custom_deconv2d([0, self.s, self.s, self.gf_dim], k_h=4, k_w=4).  # -->s * s * gf_dim
+    #          apply(tf.image.resize_nearest_neighbor, [self.s, self.s]).
+    #          custom_conv2d(self.gf_dim, k_h=3, k_w=3, d_h=1, d_w=1).
+    #          conv_batch_norm().
+    #          apply(tf.nn.relu).
+    #          # custom_deconv2d([0, self.s * 2, self.s * 2, self.gf_dim // 2], k_h=4, k_w=4).  # -->2s * 2s * gf_dim/2
+    #          apply(tf.image.resize_nearest_neighbor, [self.s * 2, self.s * 2]).
+    #          custom_conv2d(self.gf_dim // 2, k_h=3, k_w=3, d_h=1, d_w=1).
+    #          conv_batch_norm().
+    #          apply(tf.nn.relu).
+    #          # custom_deconv2d([0, self.s * 4, self.s * 4, self.gf_dim // 4], k_h=4, k_w=4).  # -->4s * 4s * gf_dim//4
+    #          apply(tf.image.resize_nearest_neighbor, [self.s * 4, self.s * 4]).
+    #          custom_conv2d(self.gf_dim // 4, k_h=3, k_w=3, d_h=1, d_w=1).
+    #          conv_batch_norm().
+    #          apply(tf.nn.relu).
+    #          custom_conv2d(3, k_h=3, k_w=3, d_h=1, d_w=1).  # -->4s * 4s * 3
+    #          apply(tf.nn.tanh))
+    #     return output_tensor
+
+    # class custom_deconv2d(pt.VarStoreMethod):
+    #     def __call__(self, input_layer, output_shape,
+    #                  k_h=5, k_w=5, d_h=2, d_w=2, stddev=0.02,
+    #                  name="deconv2d"):
+    #         output_shape[0] = input_layer.shape[0]
+    #         ts_output_shape = tf.pack(output_shape)
+    #         with tf.variable_scope(name):
+    #             # filter : [height, width, output_channels, in_channels]
+    #             w = self.variable('w', [k_h, k_w, output_shape[-1], input_layer.shape[-1]],
+    #                               init=tf.random_normal_initializer(stddev=stddev))
+    #
+    #            deconv = tf.nn.conv2d_transpose(input_layer, w,
+    #                                            output_shape=ts_output_shape,
+    #                                            strides=[1, d_h, d_w, 1])
+    #
+    #             # biases = self.variable('biases', [output_shape[-1]], init=tf.constant_initializer(0.0))
+    #             # deconv = tf.reshape(tf.nn.bias_add(deconv, biases), [-1] + output_shape[1:])
+    #             deconv = tf.reshape(deconv, [-1] + output_shape[1:])
+    #
+    #             return deconv
+        logits = network.outputs
+        network.outputs = tf.nn.tanh(network.outputs)                             # 188
+    return network, logits
+
+
+def stackD(input_images, net_rnn_embed=None, is_train=True, reuse=False): # same as discriminator_txt2img
+    # IMPLEMENTATION based on : https://github.com/paarthneekhara/text-to-image/blob/master/model.py
+    #       https://github.com/reedscot/icml2016/blob/master/main_cls_int.lua
+    w_init = tf.random_normal_initializer(stddev=0.02)
+    b_init = None # tf.constant_initializer(value=0.0)
+    gamma_init=tf.random_normal_initializer(1., 0.02)
+
+    with tf.variable_scope("stackD", reuse=reuse):
+        tl.layers.set_name_reuse(reuse)
+
+        net_in = InputLayer(input_images, name='stackD_input/images')
+        net_h0 = Conv2d(net_in, df_dim, (5, 5), (2, 2), act=lambda x: tl.act.lrelu(x, 0.2),
+                padding='SAME', W_init=w_init, name='stackD_h0/conv2d')  # (64, 32, 32, 64)
+
+        net_h1 = Conv2d(net_h0, df_dim*2, (5, 5), (2, 2), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='stackD_h1/conv2d')
+        net_h1 = BatchNormLayer(net_h1, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='stackD_h1/batchnorm') # (64, 16, 16, 128)
+
+        net_h2 = Conv2d(net_h1, df_dim*4, (5, 5), (2, 2), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='stackD_h2/conv2d')
+        net_h2 = BatchNormLayer(net_h2, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='stackD_h2/batchnorm')    # (64, 8, 8, 256)
+
+        net_h3 = Conv2d(net_h2, df_dim*8, (5, 5), (2, 2), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='stackD_h3/conv2d')
+        net_h3 = BatchNormLayer(net_h3, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='stackD_h3/batchnorm') # (64, 4, 4, 512)  paper 4.1: when the spatial dim of the D is 4x4, we replicate the description embedding spatially and perform a depth concatenation
+
+        if net_rnn_embed is not None:
+            # paper : reduce the dim of description embedding in (seperate) FC layer followed by rectification
+            net_reduced_text = DenseLayer(net_rnn_embed, n_units=t_dim,
+                   act=lambda x: tl.act.lrelu(x, 0.2),
+                   W_init=w_init, b_init=None, name='stackD_reduce_txt/dense')
+            # net_reduced_text = net_rnn_embed  # if reduce_txt in rnn_embed
+            net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 1)  # you can use ExpandDimsLayer and TileLayer instead
+            net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 2)
+            net_reduced_text.outputs = tf.tile(net_reduced_text.outputs, [1, 4, 4, 1], name='stackD_tiled_embeddings')
+
+            net_h3_concat = ConcatLayer([net_h3, net_reduced_text], concat_dim=3, name='stackD_h3_concat') # (64, 4, 4, 640)
+            # net_h3_concat = net_h3 # no text info
+            net_h3 = Conv2d(net_h3_concat, df_dim*8, (1, 1), (1, 1),
+                   padding='SAME', W_init=w_init, b_init=b_init, name='stackD_h3/conv2d_2')   # paper 4.1: perform 1x1 conv followed by rectification and a 4x4 conv to compute the final score from D
+            net_h3 = BatchNormLayer(net_h3, act=lambda x: tl.act.lrelu(x, 0.2),
+                   is_train=is_train, gamma_init=gamma_init, name='stackD_h3/batch_norm_2') # (64, 4, 4, 512)
+        else:
+            print("No text info will be used, i.e. normal DCGAN")
+
+        net_h4 = FlattenLayer(net_h3, name='d_h4/flatten')          # (64, 8192)
+        net_h4 = DenseLayer(net_h4, n_units=1, act=tf.identity,
+                W_init = w_init, name='stackD_h4/dense')
+        logits = net_h4.outputs
+        net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)  # (64, 1)
+    return net_h4, logits
+
+
 ## DCGAN =======================================================================
 def generator_dcgan(inputs, net_rnn_embed=None, is_train=True, reuse=False):
     image_size = 64
