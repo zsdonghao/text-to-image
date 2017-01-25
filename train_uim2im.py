@@ -46,14 +46,15 @@ def main_train_stackGAN():
     t_real_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'real_image')
     t_wrong_image = tf.placeholder('float32', [batch_size ,image_size, image_size, 3 ], name = 'wrong_image')
     t_real_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='real_caption_input')
-    t_wrong_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='wrong_caption_input')
+    # t_wrong_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='wrong_caption_input')
     t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
 
+    net_rnn = rnn_embed(t_real_caption, is_train=False, reuse=False, return_embed=False)
+
     net_fake_image_g1, _ = generator_txt2img(t_z,
-                    rnn_embed(t_real_caption, is_train=False, reuse=False, return_embed=False),
+                    net_rnn,
                     is_train=False, reuse=False)
 
-    net_rnn = rnn_embed(t_real_caption, is_train=False, reuse=True, return_embed=False)
     net_fake_image, _ = stackG(net_fake_image_g1.outputs,
                     net_rnn,
                     is_train=True, reuse=False)
@@ -72,14 +73,17 @@ def main_train_stackGAN():
 
     ## testing inference for txt2img
     net_gII, _ = stackG(net_fake_image_g1.outputs,
-                    rnn_embed(t_real_caption, is_train=False, reuse=True, return_embed=False), # remove if DCGAN only
+                    rnn_embed(t_real_caption, is_train=False, reuse=True, return_embed=False),
                     is_train=False, reuse=True)
+
+    # net_gII.print_params(False)
+    # exit()
 
     d_loss1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real_image_logits, tf.ones_like(disc_real_image_logits)))
     d_loss2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_wrong_image_logits, tf.zeros_like(disc_wrong_image_logits)))    # for CLS, if set it to zero, it is the same with normal DCGAN
     d_loss3 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.zeros_like(disc_fake_image_logits)))
 
-    d_loss = d_loss1 + d_loss2 + d_loss3
+    d_loss = d_loss1 + (d_loss2 + d_loss3) * 0.5
 
     g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake_image_logits, tf.ones_like(disc_fake_image_logits))) # real == 1, fake == 0
 
@@ -163,6 +167,20 @@ def main_train_stackGAN():
         sample_sentence[i] = [vocab.word_to_id(word) for word in nltk.tokenize.word_tokenize(sentence)] + [vocab.end_id]    # add END_ID
     sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
 
+    ## gI outputs for comparsion with gII outputs
+    img_gen, _ = sess.run([net_fake_image_g1.outputs, net_rnn.outputs],
+                                feed_dict={
+                                t_real_caption : sample_sentence,
+                                t_z : sample_seed})
+    save_images(img_gen, [8, 8], '{}/stackGAN/train__g1.png'.format('samples'))
+
+    # debug
+    # img_gen, rnn_out = sess.run([net_gII.outputs, net_rnn.outputs],
+    #                             feed_dict={
+    #                             t_real_caption : sample_sentence,
+    #                             t_z : sample_seed})
+    # save_images(img_gen, [8, 8], '{}/stackGAN/train__g2.png'.format('samples'))
+    # exit()
 
     n_epoch = 1000   # 600 when pre-trained rnn
     print_freq = 1
@@ -226,22 +244,27 @@ def main_train_stackGAN():
 
         if (epoch + 1) % print_freq == 0:
             print(" ** Epoch %d took %fs" % (epoch, time.time()-start_time))
+
             img_gen, rnn_out = sess.run([net_gII.outputs, net_rnn.outputs],
                                         feed_dict={
                                         t_real_caption : sample_sentence,  # remove if DCGAN only
                                         t_z : sample_seed})
 
-            print('rnn:', np.min(rnn_out[0]), np.max(rnn_out[0]))   # -1.4121389, 1.4108921
-            print('real:', b_real_images[0].shape, np.min(b_real_images[0]), np.max(b_real_images[0]))
-            print('wrong:', b_wrong_images[0].shape, np.min(b_wrong_images[0]), np.max(b_wrong_images[0]))
-            print('generate:', img_gen[0].shape, np.min(img_gen[0]), np.max(img_gen[0]))
-            img_gen = threading_data(img_gen, prepro_img, mode='rescale')
+            # print('rnn:', np.min(rnn_out[0]), np.max(rnn_out[0]))   # -1.4121389, 1.4108921
+            # print('real:', b_real_images[0].shape, np.min(b_real_images[0]), np.max(b_real_images[0]))
+            # print('wrong:', b_wrong_images[0].shape, np.min(b_wrong_images[0]), np.max(b_wrong_images[0]))
+            # print('generate:', img_gen[0].shape, np.min(img_gen[0]), np.max(img_gen[0]))
+            # img_gen = threading_data(img_gen, prepro_img, mode='rescale')
             save_images(img_gen, [8, 8], '{}/stackGAN/train_{:02d}.png'.format('samples', epoch))
+
+        tl.files.save_npz(net_gII.all_params, name=net_stackG_name, sess=sess)
+        tl.files.save_npz(net_d.all_params, name=net_stackD_name, sess=sess)
+        print("[*] Saving stackG, stackD checkpoints SUCCESS!")
 
         if (epoch != 0) and (epoch % 20) == 0:
             tl.files.save_npz(net_gII.all_params, name=net_stackG_name, sess=sess)
             tl.files.save_npz(net_d.all_params, name=net_stackD_name, sess=sess)
-            print("[*] Saving checkpoints SUCCESS!")
+            print("[*] Saving stackG, stackD checkpoints SUCCESS!")
 
         if (epoch != 0) and (epoch % 100) == 0:
             net_stackG_name_e = os.path.join(save_dir, 'net_stackG_%d.npz' % epoch)
@@ -252,9 +275,12 @@ def main_train_stackGAN():
 
 def main_train_imageEncoder():
     # flower dataset
-    # no deep        3000: 0.8; 8000: 0.6; 20000: 0.5; 800000: 0.16
+    # no deep        1000: 0.8; 8000: 0.6; 20000: 0.5; 800000: 0.16
     # deep G D E     3000: 0.8; 6000: 0.8; 10000:0.78; 20000: 0.75
-    # deep E         1000: 0.6; 3000: 0.5; 6000: 0.48  20000: 0.38 min(0.34)
+    # deep E         1000: 0.4;
+    # stackG deep E  1000: 0.75;
+    is_stackGAN = True
+
     t_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='caption_input')
     t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
 
@@ -262,20 +288,39 @@ def main_train_imageEncoder():
     net_g, _ = generator_txt2img(t_z,
                     net_rnn,
                     is_train=False, reuse=False)
-
-    net_p = cnn_encoder(net_g.outputs, is_train=True, reuse=False, name="image_encoder")
+    if is_stackGAN:
+        net_gII, _ = stackG(net_g.outputs,
+                        net_rnn,
+                        is_train=False, reuse=False)
+        net_p = cnn_encoder(net_gII.outputs, is_train=True, reuse=False, name="image_encoder")
+    else:
+        net_p = cnn_encoder(net_g.outputs, is_train=True, reuse=False, name="image_encoder")
 
     # net_g1, _ = generator_txt2img(net_p.outputs,    # mse of x and x_z
     #                 net_rnn,
     #                 is_train=False, reuse=True)
 
     # for evaluation
-    net_g2, _ = generator_txt2img(net_p.outputs,    # for evaluation, generate from P
-                    net_rnn,
-                    is_train=False, reuse=True)
-    net_g3, _ = generator_txt2img(t_z,              # for evaluation, generate from z
-                    net_rnn,
-                    is_train=False, reuse=True)
+    if is_stackGAN:
+        net_g2, _ = generator_txt2img(net_p.outputs,    # for evaluation, generate from P
+                        net_rnn,
+                        is_train=False, reuse=True)
+        net_g2, _ = stackG(net_g2.outputs,
+                        net_rnn,
+                        is_train=False, reuse=True)
+        net_g3, _ = generator_txt2img(t_z,              # for evaluation, generate from z
+                        net_rnn,
+                        is_train=False, reuse=True)
+        net_g3, _ = stackG(net_g3.outputs,
+                        net_rnn,
+                        is_train=False, reuse=True)
+    else:
+        net_g2, _ = generator_txt2img(net_p.outputs,    # for evaluation, generate from P
+                        net_rnn,
+                        is_train=False, reuse=True)
+        net_g3, _ = generator_txt2img(t_z,              # for evaluation, generate from z
+                        net_rnn,
+                        is_train=False, reuse=True)
 
     lr = 0.0002
     lr_decay = 0.5
@@ -314,6 +359,16 @@ def main_train_imageEncoder():
         net_g_loaded_params = tl.files.load_npz(name=net_g_name)
         tl.files.assign_params(sess, net_g_loaded_params, net_g)
         print("[*] Loading G checkpoint SUCCESS!")
+
+    if is_stackGAN:
+        net_stackG_name = os.path.join(save_dir, 'net_stackG.npz')
+        if not os.path.exists(net_stackG_name):
+            print("[!] Loading G II checkpoint failed!")
+        else:
+            net_g_loaded_params = tl.files.load_npz(name=net_stackG_name)
+            tl.files.assign_params(sess, net_g_loaded_params, net_gII)
+            print("[*] Loading G II checkpoint SUCCESS!")
+
 
     if True:
         if not os.path.exists(net_p_name):
@@ -367,6 +422,20 @@ def main_train_imageEncoder():
 
         print("step[{}/{}] loss:{}".format(step, n_step, err))
 
+
+        b_images = sess.run(net_gII.outputs, feed_dict={ # debug
+                                t_caption : b_caption,
+                                t_z : b_z})
+        gen_images = sess.run(net_g2.outputs, feed_dict={
+                                t_caption : b_caption,
+                                t_z : b_z})
+        print('b_images', np.min(b_images), np.max(b_images))
+        print('gen_images', np.min(gen_images), np.max(gen_images))
+        print("[*] Sampling images")
+        combine_and_save_image_sets([b_images, gen_images], 'samples/step2')
+        exit()
+
+
         if (step != 0) and (step % 1000) == 0:
             b_images = sess.run(net_g3.outputs, feed_dict={
                                     t_caption : b_caption,
@@ -386,6 +455,7 @@ def main_train_imageEncoder():
             tl.files.save_npz(net_p.all_params, name=net_p_name, sess=sess)
             # tl.files.save_npz(net_p.all_params, name=net_p_name + "_" + str(step), sess=sess)
             print("[*] Model p(encoder) saved")
+
 
 def main_translation():
     t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'input_image')

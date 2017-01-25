@@ -698,10 +698,10 @@ def stackG(inputs, net_rnn, is_train, reuse):
             # print('con1',net_h3_concat.outputs)
             # net_h3_concat = net_h3 # no text info
             net_h3 = Conv2d(net_h3_concat, gf_dim*4, (3, 3), (1, 1),
-                   padding='SAME', W_init=w_init, b_init=b_init, name='stackG_join/conv2d_2')
+                   padding='SAME', W_init=w_init, b_init=b_init, name='stackG_join/conv2d')
             # print('con2',net_h3.outputs)
             net_h3 = BatchNormLayer(net_h3, act=tf.nn.relu,
-                   is_train=is_train, gamma_init=gamma_init, name='stackG_join/batch_norm_2')
+                   is_train=is_train, gamma_init=gamma_init, name='stackG_join/batch_norm')
         else:
             print("No text info will be used, i.e. normal DCGAN")
     # def hr_g_joint_img_text(self, x_c_code):
@@ -714,7 +714,7 @@ def stackG(inputs, net_rnn, is_train, reuse):
         # print(net_h3.outputs)
 
         ## residual block x 4(for 64--256)
-        for i in range(2):
+        for i in range(4):
             net_h = Conv2d(net_h3, gf_dim*4, (3, 3), (1, 1),
                    padding='SAME', W_init=w_init, b_init=b_init, name='stackG_residual{}/conv2d_1'.format(i))
             net_h = BatchNormLayer(net_h, act=tf.nn.relu,
@@ -723,7 +723,8 @@ def stackG(inputs, net_rnn, is_train, reuse):
                    padding='SAME', W_init=w_init, b_init=b_init, name='stackG_residual{}/conv2d_2'.format(i))
             net_h = BatchNormLayer(net_h, #act=tf.nn.relu,
                    is_train=is_train, gamma_init=gamma_init, name='stackG_residual{}/batch_norm_2'.format(i))
-            net_h3.outputs = tf.nn.relu(net_h3.outputs + net_h.outputs)
+            net_h3 = ElementwiseLayer(layer=[net_h3, net_h], combine_fn=tf.add, name='stackG_residual{}/add'.format(i))
+            net_h3.outputs = tf.nn.relu(net_h3.outputs)
     # def residual_block(self, x_c_code):
     #     node0_0 = pt.wrap(x_c_code)  # -->s4 * s4 * gf_dim * 4
     #     node0_1 = \
@@ -863,7 +864,7 @@ def stackD(input_images, net_rnn_embed=None, is_train=True, reuse=False): # same
         else:
             print("No text info will be used, i.e. normal DCGAN")
 
-        net_h4 = FlattenLayer(net_h3, name='d_h4/flatten')          # (64, 8192)
+        net_h4 = FlattenLayer(net_h3, name='stackD_h4/flatten')          # (64, 8192)
         net_h4 = DenseLayer(net_h4, n_units=1, act=tf.identity,
                 W_init = w_init, name='stackD_h4/dense')
         logits = net_h4.outputs
