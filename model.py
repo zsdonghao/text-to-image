@@ -742,8 +742,10 @@ def stackG_256(inputs, net_rnn, is_train, reuse):
         # print(net_h3.outputs)
 
         ## upsampling 16x16-->64x64
-        net_h4 = DeConv2d(net_h3, gf_dim*2, (4, 4), out_size=(32, 32), strides=(2, 2),    # 16x16--32x32   you can use tf.image.resize_nearest_neighbor instead
+        net_h4 = DeConv2d(net_h3, gf_dim*2, (4, 4), out_size=(32, 32), strides=(2, 2),    # 16x16--32x32
                 padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_1')
+            # you can use UpSampling2dLayer tf.image.resize_nearest_neighbor (method=1) instead of DeConv2d
+            # net_h4 = UpSampling2dLayer(net_h3, size=[32, 32], is_scale=False, method=1, align_corners=False, name='stackG_up/upsample2d_1')
         net_h4 = Conv2d(net_h4, gf_dim*2, (3, 3), (1, 1),
                padding='SAME', W_init=w_init, b_init=b_init, name='stackG_up/conv2d_1')
         net_h4 = BatchNormLayer(net_h4, act=tf.nn.relu,
@@ -751,6 +753,7 @@ def stackG_256(inputs, net_rnn, is_train, reuse):
 
         net_h4 = DeConv2d(net_h4, gf_dim, (4, 4), out_size=(64, 64), strides=(2, 2),    # 32x32--64x64
                 padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_2')
+            # net_h4 = UpSampling2dLayer(net_h4, size=[64, 64], is_scale=False, method=1, align_corners=False, name='stackG_up/upsample2d_2')
         net_h4 = Conv2d(net_h4, gf_dim, (3, 3), (1, 1),
                padding='SAME', W_init=w_init, b_init=b_init, name='stackG_up/conv2d_2')
         net_h4 = BatchNormLayer(net_h4, act=tf.nn.relu,
@@ -759,6 +762,7 @@ def stackG_256(inputs, net_rnn, is_train, reuse):
         ###
         net_h4 = DeConv2d(net_h4, gf_dim//2, (4, 4), out_size=(128, 128), strides=(2, 2),    # 64x64--128x128
                 padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_3')
+            # net_h4 = UpSampling2dLayer(net_h4, size=[128, 128], is_scale=False, method=1, align_corners=False, name='stackG_up/upsample2d_3')
         net_h4 = Conv2d(net_h4, gf_dim//2, (3, 3), (1, 1),
                padding='SAME', W_init=w_init, b_init=b_init, name='stackG_up/conv2d_3')
         net_h4 = BatchNormLayer(net_h4, act=tf.nn.relu,
@@ -766,6 +770,7 @@ def stackG_256(inputs, net_rnn, is_train, reuse):
 
         net_h4 = DeConv2d(net_h4, gf_dim//4, (4, 4), out_size=(256, 256), strides=(2, 2),    # 128x128--256x256
                 padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_4')
+            # net_h4 = UpSampling2dLayer(net_h4, size=[256, 256], is_scale=False, method=1, align_corners=False, name='stackG_up/upsample2d_4')
         net_h4 = Conv2d(net_h4, gf_dim//4, (3, 3), (1, 1),
                padding='SAME', W_init=w_init, b_init=b_init, name='stackG_up/conv2d_4')
         net_h4 = BatchNormLayer(net_h4, act=tf.nn.relu,
@@ -886,7 +891,6 @@ def stackG_256(inputs, net_rnn, is_train, reuse):
 #         logits = net_h4.outputs
 #         net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)  # (64, 1)
 #     return net_h4, logits
-
 
 def stackD_256(input_images, net_rnn_embed=None, is_train=True, reuse=False): # same as discriminator_txt2img
     """ 64x64-->256x256 """

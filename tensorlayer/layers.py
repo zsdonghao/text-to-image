@@ -1398,7 +1398,7 @@ class DeConv3dLayer(Layer):
         self.all_params.extend( [W, b] )
 
 class UpSampling2dLayer(Layer):
-    """The :class:`UpSampling2dLayer` class is upSampling 2d layer, see `tf.nn.conv3d_transpose <https://www.tensorflow.org/versions/master/api_docs/python/nn.html#conv3d_transpose>`_.
+    """The :class:`UpSampling2dLayer` class is upSampling 2d layer, see `tf.image.resize_images <https://www.tensorflow.org/versions/master/api_docs/python/image/resizing#resize_images>`_.
 
     Parameters
     -----------
@@ -1451,6 +1451,62 @@ class UpSampling2dLayer(Layer):
         self.all_drop = dict(layer.all_drop)
         self.all_layers.extend( [self.outputs] )
 
+
+class DownSampling2dLayer(Layer):
+    """The :class:`DownSampling2dLayer` class is downSampling 2d layer, see `tf.image.resize_images <https://www.tensorflow.org/versions/master/api_docs/python/image/resizing#resize_images>`_.
+
+    Parameters
+    -----------
+    layer : a layer class with 4-D Tensor of shape [batch, height, width, channels] or 3-D Tensor of shape [height, width, channels].
+    size : a tupe of int.
+        (height, width) scale factor or new size of height and width.
+    is_scale : boolean, if True (default), size is scale factor, otherwise, size is number of pixels of height and width.
+    method : 0, 1, 2, 3. ResizeMethod. Defaults to ResizeMethod.BILINEAR.
+        - ResizeMethod.BILINEAR, Bilinear interpolation.
+        - ResizeMethod.NEAREST_NEIGHBOR, Nearest neighbor interpolation.
+        - ResizeMethod.BICUBIC, Bicubic interpolation.
+        - ResizeMethod.AREA, Area interpolation.
+    align_corners : bool. If true, exactly align all 4 corners of the input and output. Defaults to false.
+    name : a string or None
+        An optional name to attach to this layer.
+    """
+    def __init__(
+        self,
+        layer = None,
+        size = [],
+        is_scale = True,
+        method = 0,
+        align_corners = False,
+        name ='downsample2d_layer',
+    ):
+        Layer.__init__(self, name=name)
+        self.inputs = layer.outputs
+        if len(self.inputs.get_shape()) == 3:
+            if is_scale:
+                size_h = size[0] * int(self.inputs.get_shape()[0])
+                size_w = size[1] * int(self.inputs.get_shape()[1])
+                size = [size_h, size_w]
+        elif len(self.inputs.get_shape()) == 4:
+            if is_scale:
+                size_h = size[0] * int(self.inputs.get_shape()[1])
+                size_w = size[1] * int(self.inputs.get_shape()[2])
+                size = [size_h, size_w]
+        else:
+            raise Exception("Donot support shape %s" % self.inputs.get_shape())
+        print("  tensorlayer:Instantiate DownSampling2dLayer %s: is_scale:%s : %s, method: %d, align_corners: %s" %
+                                (name, is_scale, size, method, align_corners))
+        with tf.variable_scope(name) as vs:
+            try:
+                self.outputs = tf.image.resize_images(self.inputs, size=size, method=method, align_corners=align_corners)
+            except: # for TF 0.10
+                self.outputs = tf.image.resize_images(self.inputs, new_height=size[0], new_width=size[1], method=method, align_corners=align_corners)
+
+        self.all_layers = list(layer.all_layers)
+        self.all_params = list(layer.all_params)
+        self.all_drop = dict(layer.all_drop)
+        self.all_layers.extend( [self.outputs] )
+
+
 class AtrousConv2dLayer(Layer):
     """The :class:`AtrousConv2dLayer` class is Atrous convolution (a.k.a. convolution with holes or dilated convolution) 2D layer, see `tf.nn.atrous_conv2d <https://www.tensorflow.org/versions/master/api_docs/python/nn.html#atrous_conv2d>`_.
 
@@ -1491,21 +1547,21 @@ class AtrousConv2dLayer(Layer):
             act = tf.identity
         with tf.variable_scope(name) as vs:
             shape = [filter_size[0], filter_size[1], int(self.inputs.get_shape()[-1]), n_filter]
-            W = tf.get_variable(name='W', shape=shape, initializer=W_init, **W_init_args )
+            filters = tf.get_variable(name='filter', shape=shape, initializer=W_init, **W_init_args )
             if b_init:
                 b = tf.get_variable(name='b', shape=(n_filter), initializer=b_init, **b_init_args )
-                self.outputs = act(tf.nn.atrous_conv2d(self.inputs, W, rate, padding) + b)
+                self.outputs = act(tf.nn.atrous_conv2d(self.inputs, filters, rate, padding) + b)
             else:
-                self.outputs = act(tf.nn.atrous_conv2d(self.inputs, W, rate, padding))
+                self.outputs = act(tf.nn.atrous_conv2d(self.inputs, filters, rate, padding))
 
         self.all_layers = list(layer.all_layers)
         self.all_params = list(layer.all_params)
         self.all_drop = dict(layer.all_drop)
         self.all_layers.extend( [self.outputs] )
         if b_init:
-            self.all_params.extend( [W, b] )
+            self.all_params.extend( [filters, b] )
         else:
-            self.all_params.extend( [W] )
+            self.all_params.extend( [filters] )
 
 class SeparableConv2dLayer(Layer):#TODO
     """The :class:`SeparableConv2dLayer` class is 2-D convolution with separable filters., see `tf.nn.separable_conv2d <https://www.tensorflow.org/versions/master/api_docs/python/nn.html#separable_conv2d>`_.
@@ -1629,6 +1685,7 @@ def Conv2d(net, n_filter=32, filter_size=(3, 3), strides=(1, 1), act = None,
     >>> conv2 = Conv2d(conv2, 128, (3, 3), act=tf.nn.relu, padding='SAME', W_init=w_init, b_init=b_init, name='conv2_2')
     >>> pool2 = MaxPool2d(conv2, (2, 2), padding='SAME', name='pool2')
     """
+    # assert len(strides) == 2, print("len(strides)==2, Conv2d and Conv2dLayer are different.")
     if act is None:
         act = tf.identity
     net = Conv2dLayer(net,
@@ -1658,8 +1715,9 @@ def DeConv2d(net, n_out_channel = 32, filter_size=(3, 3),
     batch_size : int or None, batch_size. If None, try to find the batch_size from the first dim of net.outputs (you should tell the batch_size when define the input placeholder).
     strides : tuple of (height, width) for strides.
     act : None or activation function.
-    others : see :class:`Conv2dLayer`.
+    others : see :class:`DeConv2dLayer`.
     """
+    # assert len(strides) == 2, print("len(strides)==2, DeConv2d and DeConv2dLayer are different.")
     if act is None:
         act = tf.identity
     if batch_size is None:
@@ -1677,7 +1735,7 @@ def DeConv2d(net, n_out_channel = 32, filter_size=(3, 3),
                     name = name)
     return net
 
-def MaxPool2d(net, filter_size=(2,2), strides=None, padding='SAME', name='maxpool'):
+def MaxPool2d(net, filter_size=(2, 2), strides=None, padding='SAME', name='maxpool'):
     """Wrapper for :class:`PoolLayer`.
 
     Parameters
@@ -1685,10 +1743,11 @@ def MaxPool2d(net, filter_size=(2,2), strides=None, padding='SAME', name='maxpoo
     net : TensorLayer layer.
     filter_size : tuple of (height, width) for filter size.
     strides : tuple of (height, width). Default is the same with filter_size.
-    others : see :class:`Conv2dLayer`.
+    others : see :class:`PoolLayer`.
     """
     if strides is None:
         strides = filter_size
+    # assert len(strides) == 2, print("len(strides)==2, MaxPool2d and PoolLayer are different.")
     net = PoolLayer(net, ksize=[1, filter_size[0], filter_size[1], 1],
             strides=[1, strides[0], strides[1], 1],
             padding=padding,
@@ -1696,7 +1755,7 @@ def MaxPool2d(net, filter_size=(2,2), strides=None, padding='SAME', name='maxpoo
             name = name)
     return net
 
-def MeanPool2d(net, filter_size=(2,2), strides=None, padding='SAME', name='meanpool'):
+def MeanPool2d(net, filter_size=(2, 2), strides=None, padding='SAME', name='meanpool'):
     """Wrapper for :class:`PoolLayer`.
 
     Parameters
@@ -1704,10 +1763,11 @@ def MeanPool2d(net, filter_size=(2,2), strides=None, padding='SAME', name='meanp
     net : TensorLayer layer.
     filter_size : tuple of (height, width) for filter size.
     strides : tuple of (height, width). Default is the same with filter_size.
-    others : see :class:`Conv2dLayer`.
+    others : see :class:`PoolLayer`.
     """
     if strides is None:
         strides = filter_size
+    # assert len(strides) == 2, print("len(strides)==2, MeanPool2d and PoolLayer are different.")
     net = PoolLayer(net, ksize=[1, filter_size[0], filter_size[1], 1],
             strides=[1, strides[0], strides[1], 1],
             padding=padding,

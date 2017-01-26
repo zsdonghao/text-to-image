@@ -191,7 +191,7 @@ def main_train_stackGAN():
     n_epoch = 600   # 600 when pre-trained rnn
     print_freq = 1
     n_batch_epoch = int(n_images / batch_size)
-    for epoch in range(63, n_epoch+1):
+    for epoch in range(67, n_epoch+1):
         start_time = time.time()
 
         if epoch !=0 and (epoch % decay_every == 0):
@@ -272,7 +272,7 @@ def main_train_stackGAN():
         # tl.files.save_npz(net_d.all_params, name=net_stackD_name, sess=sess)
         # print("[*] Saving stackG, stackD checkpoints SUCCESS!")
 
-        if (epoch != 0) and (epoch % 20) == 0:
+        if (epoch != 0) and (epoch % 5) == 0:
             tl.files.save_npz(net_gII.all_params, name=net_stackG_name, sess=sess)
             tl.files.save_npz(net_d.all_params, name=net_stackD_name, sess=sess)
             print("[*] Saving stackG, stackD checkpoints SUCCESS!")
@@ -291,6 +291,9 @@ def main_train_imageEncoder():
     # deep E         1000: 0.4;
     # stackG deep E  1000: 0.75;
     is_stackGAN = True
+    if is_stackGAN:
+        stackG = stackG_256
+        stackD = stackD_256
 
     t_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='caption_input')
     t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
@@ -303,6 +306,8 @@ def main_train_imageEncoder():
         net_gII, _ = stackG(net_g.outputs,
                         net_rnn,
                         is_train=False, reuse=False)
+        ## downsampling from 256 to 64
+        net_gII = DownSampling2dLayer(net_gII, size=[0.25, 0.25], is_scale=True, method=0, name='stackG_output_downsampling')
         net_p = cnn_encoder(net_gII.outputs, is_train=True, reuse=False, name="image_encoder")
     else:
         net_p = cnn_encoder(net_g.outputs, is_train=True, reuse=False, name="image_encoder")
@@ -577,24 +582,26 @@ def main_translation():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--train_step', type=str, default="imageEncoder",
-                       help='Step of the training : translation, imageEncoder')
+    parser.add_argument('--train_step', type=str, default="stackGAN",
+                       help='Step of the training : stackGAN, imageEncoder, translation')
 
-    # parser.add_argument('--retrain', type=int, default=0,
-    #                    help='Set 0 for using pre-trained model, 1 for retraining the model')
+        # parser.add_argument('--retrain', type=int, default=0,
+        #                    help='Set 0 for using pre-trained model, 1 for retraining the model')
 
     args = parser.parse_args()
 
-    # FLAGS.retrain = args.retrain == 1
+        # FLAGS.retrain = args.retrain == 1
 
-    if args.train_step == "imageEncoder":
+    if args.train_step == "stackGAN":
+        main_train_stackGAN()
+
+    elif args.train_step == "imageEncoder":
         main_train_imageEncoder()
 
     elif args.train_step == "translation":
         main_translation()
 
-    elif args.train_step == "stackGAN":
-        main_train_stackGAN()
+
 
 
 

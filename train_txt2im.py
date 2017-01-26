@@ -51,13 +51,6 @@ Code References
 from data_loader import *
 
 ###======================== DEFIINE MODEL ===================================###
-## you may want to see how the data augmentation work
-# save_images(images[:64], [8, 8], 'temp.png')
-# pre_img = threading_data(images[:64], prepro_img, mode='debug')
-# save_images(pre_img, [8, 8], 'temp2.png')
-# # print(images[:64].shape, np.min(images[:64]), np.max(images[:64]))
-# print(pre_img.shape, np.min(pre_img), np.max(pre_img))
-# exit()
 
 ## build model
 t_real_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'real_image')
