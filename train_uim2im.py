@@ -32,6 +32,7 @@ if is_deep:
     # generator_txt2img = generator_txt2img_deep
     cnn_encoder = cnn_encoder_deep # use shallow cnn for text-image mapping, deep cnn for projection
 
+
 def change_id(sentences, id_list=[], target_id=0):
     b_sentences = copy.deepcopy(sentences)
     for i, sen in enumerate(b_sentences):
@@ -42,9 +43,14 @@ def change_id(sentences, id_list=[], target_id=0):
     return b_sentences
 
 def main_train_stackGAN():
+    image_size = 256
+    images_train = images_train_256
+    stackG = stackG_256
+    stackD = stackD_256
+    # print(images_train.shape)
 
     t_real_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'real_image')
-    t_wrong_image = tf.placeholder('float32', [batch_size ,image_size, image_size, 3 ], name = 'wrong_image')
+    t_wrong_image = tf.placeholder('float32', [batch_size ,image_size, image_size, 3], name = 'wrong_image')
     t_real_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='real_caption_input')
     # t_wrong_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='wrong_caption_input')
     t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
@@ -134,22 +140,22 @@ def main_train_stackGAN():
         print("[*] Loading G II checkpoint SUCCESS!")
     if not os.path.exists(net_stackD_name):
         print("[!] Loading D II checkpoint failed!")
-        try:
-            # as the architecture of D II equal to D I, you can initialize D II by using D I parameters.
-            net_d_loaded_params = tl.files.load_npz(name="checkpoint/net_d.npz")
-            tl.files.assign_params(sess, net_d_loaded_params, net_d)
-            print("[*] Loading D II from D I SUCCESS!")
-        except:
-            print("[*] Loading D II from D I failed!")
+            # try:
+            #     # as the architecture of D II equal to D I, you can initialize D II by using D I parameters.
+            #     net_d_loaded_params = tl.files.load_npz(name="checkpoint/net_d.npz")
+            #     tl.files.assign_params(sess, net_d_loaded_params, net_d)
+            #     print("[*] Loading D II from D I SUCCESS!")
+            # except:
+            #     print("[*] Loading D II from D I failed!")
     else:
         net_d_loaded_params = tl.files.load_npz(name=net_stackD_name)
         tl.files.assign_params(sess, net_d_loaded_params, net_d)
         print("[*] Loading D II checkpoint SUCCESS!")
 
-    # # as the architecture of D II equal to D I, you can initialize D II by using D I parameters.
-    # net_d_loaded_params = tl.files.load_npz(name="checkpoint/net_d.npz")
-    # tl.files.assign_params(sess, net_d_loaded_params, net_d)
-    # print("[*] Loading D II from D I SUCCESS!")
+        # # as the architecture of D II equal to D I, you can initialize D II by using D I parameters.
+        # net_d_loaded_params = tl.files.load_npz(name="checkpoint/net_d.npz")
+        # tl.files.assign_params(sess, net_d_loaded_params, net_d)
+        # print("[*] Loading D II from D I SUCCESS!")
 
     sample_size = batch_size
     sample_seed = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
@@ -182,10 +188,10 @@ def main_train_stackGAN():
     # save_images(img_gen, [8, 8], '{}/stackGAN/train__g2.png'.format('samples'))
     # exit()
 
-    n_epoch = 1000   # 600 when pre-trained rnn
+    n_epoch = 600   # 600 when pre-trained rnn
     print_freq = 1
     n_batch_epoch = int(n_images / batch_size)
-    for epoch in range(n_epoch+1):
+    for epoch in range(63, n_epoch+1):
         start_time = time.time()
 
         if epoch !=0 and (epoch % decay_every == 0):
@@ -225,8 +231,8 @@ def main_train_stackGAN():
             # exit()
 
             ## updates D
-            b_real_images = threading_data(b_real_images, prepro_img, mode='train')   # [0, 255] --> [-1, 1]
-            b_wrong_images = threading_data(b_wrong_images, prepro_img, mode='train')
+            b_real_images = threading_data(b_real_images, prepro_img, mode='train_stackGAN')   # [0, 255] --> [-1, 1]
+            b_wrong_images = threading_data(b_wrong_images, prepro_img, mode='train_stackGAN')
             errD, _ = sess.run([d_loss, d_optim], feed_dict={
                             t_real_image : b_real_images,
                             t_wrong_image : b_wrong_images,
@@ -255,11 +261,16 @@ def main_train_stackGAN():
             # print('wrong:', b_wrong_images[0].shape, np.min(b_wrong_images[0]), np.max(b_wrong_images[0]))
             # print('generate:', img_gen[0].shape, np.min(img_gen[0]), np.max(img_gen[0]))
             # img_gen = threading_data(img_gen, prepro_img, mode='rescale')
+
+            if need_256:
+                # 256x256 image is very large, resize it before save it
+                img_gen = threading_data(img_gen, imresize, size=[64, 64], interp='bilinear')
+
             save_images(img_gen, [8, 8], '{}/stackGAN/train_{:02d}.png'.format('samples', epoch))
 
-        tl.files.save_npz(net_gII.all_params, name=net_stackG_name, sess=sess)
-        tl.files.save_npz(net_d.all_params, name=net_stackD_name, sess=sess)
-        print("[*] Saving stackG, stackD checkpoints SUCCESS!")
+        # tl.files.save_npz(net_gII.all_params, name=net_stackG_name, sess=sess)
+        # tl.files.save_npz(net_d.all_params, name=net_stackD_name, sess=sess)
+        # print("[*] Saving stackG, stackD checkpoints SUCCESS!")
 
         if (epoch != 0) and (epoch % 20) == 0:
             tl.files.save_npz(net_gII.all_params, name=net_stackG_name, sess=sess)

@@ -72,6 +72,16 @@ def prepro_img(x, mode=None):
         x = x / (255. / 2.)
         x = x - 1.
         # x = x * 0.9999
+    elif mode=='train_stackGAN':
+        x = flip_axis(x, axis=1, is_random=True)
+        x = rotation(x, rg=16, is_random=True, fill_mode='nearest')
+            # x = crop(x, wrg=50, hrg=50, is_random=True)
+            # x = imresize(x, size=[64, 64], interp='bilinear', mode=None)
+        x = imresize(x, size=[316, 316], interp='bilinear', mode=None)
+        x = crop(x, wrg=256, hrg=256, is_random=True)
+        x = x / (255. / 2.)
+        x = x - 1.
+        # x = x * 0.9999
     elif mode=='rescale':
     # rescale (-1, 1) --> (0, 1) for display
         x = (x + 1.) / 2.

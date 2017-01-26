@@ -7,6 +7,7 @@ import tensorlayer as tl
 from utils import *
 
 dataset = '102flowers' #
+need_256 = True # for stackGAN
 
 if dataset == '102flowers':
     """
@@ -78,13 +79,19 @@ if dataset == '102flowers':
     #         return img
     # images = tl.prepro.threading_data(imgs_title_list, fn=get_resize_image)
     images = []
+    images_256 = []
     for name in imgs_title_list:
         # print(name)
-        img = scipy.misc.imread( os.path.join(img_dir, name) )
-        img = tl.prepro.imresize(img, size=[64, 64])    # (64, 64, 3)
+        img_raw = scipy.misc.imread( os.path.join(img_dir, name) )
+        img = tl.prepro.imresize(img_raw, size=[64, 64])    # (64, 64, 3)
         img = img.astype(np.float32)
         images.append(img)
-    images = np.asarray(images)
+        if need_256:
+            img = tl.prepro.imresize(img_raw, size=[256, 256]) # (256, 256, 3)
+            img = img.astype(np.float32)
+
+            images_256.append(img)
+    images_256 = np.array(images_256)
     print(" * loading and resizing took %ss" % (time.time()-s))
 
     n_images = len(captions_dict)
@@ -95,6 +102,8 @@ if dataset == '102flowers':
 
     captions_ids_train, captions_ids_test = captions_ids[: 8000*n_captions_per_image], captions_ids[8000*n_captions_per_image :]
     images_train, images_test = images[:8000], images[8000:]
+    if need_256:
+        images_train_256, images_test_256 = images_256[:8000], images_256[8000:]
     n_images_train = len(images_train)
     n_images_test = len(images_test)
     n_captions_train = len(captions_ids_train)
