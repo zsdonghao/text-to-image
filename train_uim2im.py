@@ -307,7 +307,7 @@ def main_train_imageEncoder():
                         net_rnn,
                         is_train=False, reuse=False)
         ## downsampling from 256 to 64
-        net_gII = DownSampling2dLayer(net_gII, size=[0.25, 0.25], is_scale=True, method=0, name='stackG_output_downsampling')
+        net_gII = DownSampling2dLayer(net_gII, size=[64, 64], is_scale=False, method=0, name='stackG_output_downsampling')
         net_p = cnn_encoder(net_gII.outputs, is_train=True, reuse=False, name="image_encoder")
     else:
         net_p = cnn_encoder(net_g.outputs, is_train=True, reuse=False, name="image_encoder")

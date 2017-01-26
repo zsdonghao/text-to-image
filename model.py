@@ -187,6 +187,7 @@ def cnn_encoder(inputs, is_train, reuse, name="cnn"):
     return net_h4
 
 ## deep network for flower =====================================================
+# don't work
 def generator_txt2img_deep(input_z, net_rnn_embed=None, is_train=True, reuse=False, is_large=False):
     # Generator with ResNet : line 93 https://github.com/reedscot/icml2016/blob/master/main_cls.lua
     s = image_size # output image size [64]
