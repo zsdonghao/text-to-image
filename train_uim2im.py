@@ -121,6 +121,7 @@ def main_train_stackGAN():
     else:
         net_e_loaded_params = tl.files.load_npz(name=net_e_name)
         tl.files.assign_params(sess, net_e_loaded_params, net_rnn)
+        del net_e_loaded_params
         print("[*] Loading RNN checkpoint SUCCESS!")
 
     if not os.path.exists(net_g_name):
@@ -128,6 +129,7 @@ def main_train_stackGAN():
     else:
         net_g_loaded_params = tl.files.load_npz(name=net_g_name)
         tl.files.assign_params(sess, net_g_loaded_params, net_fake_image_g1)
+        del net_g_loaded_params
         print("[*] Loading G I checkpoint SUCCESS!")
 
     net_stackG_name = os.path.join(save_dir, 'net_stackG.npz')
@@ -137,6 +139,7 @@ def main_train_stackGAN():
     else:
         net_g_loaded_params = tl.files.load_npz(name=net_stackG_name)
         tl.files.assign_params(sess, net_g_loaded_params, net_gII)
+        del net_g_loaded_params
         print("[*] Loading G II checkpoint SUCCESS!")
     if not os.path.exists(net_stackD_name):
         print("[!] Loading D II checkpoint failed!")
@@ -150,6 +153,7 @@ def main_train_stackGAN():
     else:
         net_d_loaded_params = tl.files.load_npz(name=net_stackD_name)
         tl.files.assign_params(sess, net_d_loaded_params, net_d)
+        del net_d_loaded_params
         print("[*] Loading D II checkpoint SUCCESS!")
 
         # # as the architecture of D II equal to D I, you can initialize D II by using D I parameters.
@@ -191,7 +195,7 @@ def main_train_stackGAN():
     n_epoch = 600   # 600 when pre-trained rnn
     print_freq = 1
     n_batch_epoch = int(n_images / batch_size)
-    for epoch in range(67, n_epoch+1):
+    for epoch in range(0, n_epoch+1):
         start_time = time.time()
 
         if epoch !=0 and (epoch % decay_every == 0):
@@ -290,10 +294,14 @@ def main_train_imageEncoder():
     # deep G D E     3000: 0.8; 6000: 0.8; 10000:0.78; 20000: 0.75
     # deep E         1000: 0.4;
     # stackG deep E  1000: 0.75;
-    is_stackGAN = True
+    is_stackGAN = True # use stackGAN
+    is_E_256 = True    # use E with 256x256x3 input
     if is_stackGAN:
         stackG = stackG_256
         stackD = stackD_256
+    if is_E_256:
+        cnn_encoder = cnn_encoder_256
+        assert is_stackGAN == True
 
     t_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='caption_input')
     t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
@@ -306,9 +314,12 @@ def main_train_imageEncoder():
         net_gII, _ = stackG(net_g.outputs,
                         net_rnn,
                         is_train=False, reuse=False)
-        ## downsampling from 256 to 64
-        net_gII = DownSampling2dLayer(net_gII, size=[64, 64], is_scale=False, method=0, name='stackG_output_downsampling')
-        net_p = cnn_encoder(net_gII.outputs, is_train=True, reuse=False, name="image_encoder")
+        if is_E_256:
+            net_p = cnn_encoder(net_gII.outputs, is_train=True, reuse=False, name="image_encoder")
+        else:
+            ## downsampling from 256 to 64
+            net_gII = DownSampling2dLayer(net_gII, size=[64, 64], is_scale=False, method=0, name='stackG_output_downsampling') # 0: bilinear 1: nearest
+            net_p = cnn_encoder(net_gII.outputs, is_train=True, reuse=False, name="image_encoder")
     else:
         net_p = cnn_encoder(net_g.outputs, is_train=True, reuse=False, name="image_encoder")
 
@@ -439,17 +450,17 @@ def main_train_imageEncoder():
         print("step[{}/{}] loss:{}".format(step, n_step, err))
 
 
-        b_images = sess.run(net_gII.outputs, feed_dict={ # debug
-                                t_caption : b_caption,
-                                t_z : b_z})
-        gen_images = sess.run(net_g2.outputs, feed_dict={
-                                t_caption : b_caption,
-                                t_z : b_z})
-        print('b_images', np.min(b_images), np.max(b_images))
-        print('gen_images', np.min(gen_images), np.max(gen_images))
-        print("[*] Sampling images")
-        combine_and_save_image_sets([b_images, gen_images], 'samples/step2')
-        exit()
+        # b_images = sess.run(net_gII.outputs, feed_dict={ # debug
+        #                         t_caption : b_caption,
+        #                         t_z : b_z})
+        # gen_images = sess.run(net_g2.outputs, feed_dict={
+        #                         t_caption : b_caption,
+        #                         t_z : b_z})
+        # print('b_images', np.min(b_images), np.max(b_images))
+        # print('gen_images', np.min(gen_images), np.max(gen_images))
+        # print("[*] Sampling images")
+        # combine_and_save_image_sets([b_images, gen_images], 'samples/step2')
+        # exit()
 
 
         if (step != 0) and (step % 1000) == 0:
@@ -470,7 +481,6 @@ def main_train_imageEncoder():
             print("[*] Saving Model")
             tl.files.save_npz(net_p.all_params, name=net_p_name, sess=sess)
             # tl.files.save_npz(net_p.all_params, name=net_p_name + "_" + str(step), sess=sess)
-            print("[*] Model p(encoder) saved")
 
 
 def main_translation():

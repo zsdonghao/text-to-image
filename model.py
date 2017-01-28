@@ -894,7 +894,7 @@ def stackG_256(inputs, net_rnn, is_train, reuse):
 #     return net_h4, logits
 
 def stackD_256(input_images, net_rnn_embed=None, is_train=True, reuse=False): # same as discriminator_txt2img
-    """ 64x64-->256x256 """
+    """ 256x256 -> real fake """
     w_init = tf.random_normal_initializer(stddev=0.02)
     b_init = None # tf.constant_initializer(value=0.0)
     gamma_init=tf.random_normal_initializer(1., 0.02)
@@ -1035,9 +1035,153 @@ def stackD_256(input_images, net_rnn_embed=None, is_train=True, reuse=False): # 
         logits = net_h12.outputs
         net_h12.outputs = tf.nn.sigmoid(net_h12.outputs)  # (64, 1)
 
-    return net_h4, logits
+    return net_h12, logits
 
 
+
+def cnn_encoder_256(input_images, net_rnn_embed=None, is_train=True, reuse=False, name='image_encoder'):
+    """ 256x256 --> z noise , modify from stackD_256 """
+    w_init = tf.random_normal_initializer(stddev=0.02)
+    b_init = None # tf.constant_initializer(value=0.0)
+    gamma_init=tf.random_normal_initializer(1., 0.02)
+
+    with tf.variable_scope(name, reuse=reuse):
+        tl.layers.set_name_reuse(reuse)
+
+        net_in = InputLayer(input_images, name='cnn_encoder_256_input/images')
+        net_h0 = Conv2d(net_in, df_dim, (4, 4), (2, 2), act=lambda x: tl.act.lrelu(x, 0.2),
+                padding='SAME', W_init=w_init, name='cnn_encoder_256_h0/conv2d')  # (64, 32, 32, 64)
+
+        net_h1 = Conv2d(net_h0, df_dim*2, (4, 4), (2, 2), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='cnn_encoder_256_h1/conv2d')
+        net_h1 = BatchNormLayer(net_h1, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='cnn_encoder_256_h1/batchnorm') # (64, 16, 16, 128)
+
+        net_h2 = Conv2d(net_h1, df_dim*4, (4, 4), (2, 2), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='cnn_encoder_256_h2/conv2d')
+        net_h2 = BatchNormLayer(net_h2, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='stackD_h2/batchnorm')    # (64, 8, 8, 256)
+
+        net_h3 = Conv2d(net_h2, df_dim*8, (4, 4), (2, 2), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='stackD_h3/conv2d')
+        net_h3 = BatchNormLayer(net_h3, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='stackD_h3/batchnorm') # (64, 4, 4, 512)  paper 4.1: when the spatial dim of the D is 4x4, we replicate the description embedding spatially and perform a depth concatenation
+
+        net_h4 = Conv2d(net_h3, df_dim*16, (4, 4), (2, 2), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='stackD_h4/conv2d')
+        net_h4 = BatchNormLayer(net_h4, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='stackD_h4/batchnorm')
+
+        net_h5 = Conv2d(net_h4, df_dim*32, (4, 4), (2, 2), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='stackD_h5/conv2d')
+        net_h5 = BatchNormLayer(net_h5, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='stackD_h5/batchnorm')
+
+        net_h6 = Conv2d(net_h5, df_dim*16, (1, 1), (1, 1), act=None,                        # filter (1, 1) for XXX
+                padding='SAME', W_init=w_init, b_init=b_init, name='stackD_h6/conv2d')
+        net_h6 = BatchNormLayer(net_h6, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='stackD_h6/batchnorm')
+
+        net_h7 = Conv2d(net_h6, df_dim*8, (1, 1), (1, 1), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='stackD_h7/conv2d')
+        net_h7 = BatchNormLayer(net_h7, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='stackD_h7/batchnorm')
+    # line 270  https://github.com/hanzhanggit/StackGAN/blob/master/stageII/model.py
+        # node1_0 = \
+        #     (pt.template("input").  # 4s * 4s * 3
+        #      custom_conv2d(self.df_dim, k_h=4, k_w=4).  # 2s * 2s * df_dim
+        #      apply(leaky_rectify, leakiness=0.2).
+        #      custom_conv2d(self.df_dim * 2, k_h=4, k_w=4).  # s * s * df_dim*2
+        #      conv_batch_norm().
+        #      apply(leaky_rectify, leakiness=0.2).
+        #      custom_conv2d(self.df_dim * 4, k_h=4, k_w=4).  # s2 * s2 * df_dim*4
+        #      conv_batch_norm().
+        #      apply(leaky_rectify, leakiness=0.2).
+        #      custom_conv2d(self.df_dim * 8, k_h=4, k_w=4).  # s4 * s4 * df_dim*8
+        #      conv_batch_norm().
+        #      apply(leaky_rectify, leakiness=0.2).
+        #      custom_conv2d(self.df_dim * 16, k_h=4, k_w=4).  # s8 * s8 * df_dim*16
+        #      conv_batch_norm().
+        #      apply(leaky_rectify, leakiness=0.2).
+        #      custom_conv2d(self.df_dim * 32, k_h=4, k_w=4).  # s16 * s16 * df_dim*32
+        #      conv_batch_norm().
+        #      apply(leaky_rectify, leakiness=0.2).
+        #      custom_conv2d(self.df_dim * 16, k_h=1, k_w=1, d_h=1, d_w=1).  # s16 * s16 * df_dim*16
+        #      conv_batch_norm().
+        #      apply(leaky_rectify, leakiness=0.2).
+        #      custom_conv2d(self.df_dim * 8, k_h=1, k_w=1, d_h=1, d_w=1).  # s16 * s16 * df_dim*8
+        #      conv_batch_norm())
+
+        net_h8 = Conv2d(net_h7, df_dim*2, (1, 1), (1, 1), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='cnn_encoder_256_h8/conv2d')
+        net_h8 = BatchNormLayer(net_h8, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='cnn_encoder_256_h8/batchnorm')
+
+        net_h9 = Conv2d(net_h8, df_dim*2, (3, 3), (1, 1), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='cnn_encoder_256_h9/conv2d')
+        net_h9 = BatchNormLayer(net_h9, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='cnn_encoder_256_h9/batchnorm')
+
+        net_h10 = Conv2d(net_h9, df_dim*8, (3, 3), (1, 1), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='cnn_encoder_256_h10/conv2d')
+        net_h10 = BatchNormLayer(net_h10, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='cnn_encoder_256_h10/batchnorm')
+        # node1_1 = \
+        #     (node1_0.
+        #      custom_conv2d(self.df_dim * 2, k_h=1, k_w=1, d_h=1, d_w=1).
+        #      conv_batch_norm().
+        #      apply(leaky_rectify, leakiness=0.2).
+        #      custom_conv2d(self.df_dim * 2, k_h=3, k_w=3, d_h=1, d_w=1).
+        #      conv_batch_norm().
+        #      apply(leaky_rectify, leakiness=0.2).
+        #      custom_conv2d(self.df_dim * 8, k_h=3, k_w=3, d_h=1, d_w=1).
+        #      conv_batch_norm())
+
+        net_h11 = ElementwiseLayer(layer=[net_h7, net_h10], combine_fn=tf.add, name='cnn_encoder_256_residual/add')
+        net_h11.outputs = tl.act.lrelu(net_h11.outputs, 0.2)
+        # node1 = \
+        #     (node1_0.
+        #      apply(tf.add, node1_1).
+        #      apply(leaky_rectify, leakiness=0.2))
+
+        # print(net_h11.outputs)
+        # net_h11 = ExpandDimsLayer(net_h11, 1, name='stackD_expand1')
+        # print(net_h11.outputs)
+        # net_h11 = ExpandDimsLayer(net_h11, 1, name='stackD_expand2')
+        # net_h11 = TileLayer(net_h11, [1, 4, 4, 1], name='stackD_tile')
+
+        # exit(net_h11.outputs)
+
+        # if net_rnn_embed is not None:
+        #     # paper : reduce the dim of description embedding in (seperate) FC layer followed by rectification
+        #     net_reduced_text = DenseLayer(net_rnn_embed, n_units=t_dim,
+        #            act=lambda x: tl.act.lrelu(x, 0.2),
+        #            W_init=w_init, b_init=None, name='stackD_reduce_txt/dense')
+        #     # net_reduced_text = net_rnn_embed  # if reduce_txt in rnn_embed
+        #     net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 1)  # you can use ExpandDimsLayer and TileLayer instead
+        #     net_reduced_text.outputs = tf.expand_dims(net_reduced_text.outputs, 2)
+        #     net_reduced_text.outputs = tf.tile(net_reduced_text.outputs, [1, 4, 4, 1], name='stackD_tiled_embeddings')
+        #
+        #     net_h11_concat = ConcatLayer([net_h11, net_reduced_text], concat_dim=3, name='stackD_h11_concat') # (64, 4, 4, 640)
+        #     # net_h3_concat = net_h3 # no text info
+        #     net_h11 = Conv2d(net_h11_concat, df_dim*8, (1, 1), (1, 1),
+        #            padding='SAME', W_init=w_init, b_init=b_init, name='stackD_h11/conv2d_2')   # paper 4.1: perform 1x1 conv followed by rectification and a 4x4 conv to compute the final score from D
+        #     net_h11 = BatchNormLayer(net_h11, act=lambda x: tl.act.lrelu(x, 0.2),
+        #            is_train=is_train, gamma_init=gamma_init, name='stackD_h11/batch_norm_2') # (64, 4, 4, 512)
+        # else:
+        #     print("No text info will be used, i.e. normal DCGAN")
+        # c_code = tf.expand_dims(tf.expand_dims(c_code, 1), 1)
+        # c_code = tf.tile(c_code, [1, self.s16, self.s16, 1])  # s16 * s16 * ef_dim
+        #
+        # x_c_code = tf.concat(3, [x_code, c_code])
+
+        net_h12 = FlattenLayer(net_h11, name='cnn_encoder_256_h4/flatten')          # (64, 8192)
+        net_h12 = DenseLayer(net_h12, n_units=z_dim, act=tf.identity,
+                W_init = w_init, name='cnn_encoder_256_h4/dense')
+        # logits = net_h12.outputs
+        # net_h12.outputs = tf.nn.sigmoid(net_h12.outputs)  # (64, 1)
+
+    return net_h12#, logits
 
 
 
