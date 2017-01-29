@@ -294,6 +294,7 @@ def main_train_imageEncoder():
     # deep E         1000: 0.4;
     # stackG deep E  1000: 0.75;
     # E_256,         2000: 0.87 6000: 0.8 10000: 0.77 13172: 0.76
+    # E_256, resid   57720: 0.72
     is_stackGAN = True # use stackGAN and use E with 256x256x3 input
     if is_stackGAN:
         stackG = stackG_256
@@ -583,9 +584,7 @@ def main_translation():
         #                                 t_caption : b_caption,                                      # use fake image
         #                                 })                                                          # use fake image
 
-
         sample_sentence = change_id(b_caption, color_ids, vocab.word_to_id("blue"))
-        # sample_sentence[0] = [vocab.word_to_id("blue")]
         # sample_sentence = b_caption                                               # reconstruct from same sentences, test performance of reconstruction
         for idx, caption in enumerate(b_caption):
             print("%d-%d: source: %s" % (i, idx, [vocab.id_to_word(word) for word in caption]))
@@ -621,6 +620,135 @@ def main_translation():
         #                                 })
         # save_images(gen_img2, [8, 8], 'samples/step3/debug_{:02d}.png'.format(i))
         print("Translate completed {}".format(i))
+
+
+def main_translation_interact():
+    is_stackGAN = True # use stackGAN and use E with 256x256x3 input, otherwise, 64x64x3 as input
+    if is_stackGAN:
+        image_size = 256
+        stackG = stackG_256
+        cnn_encoder = cnn_encoder_256
+        images_test = images_test_256
+    else:
+        image_size = 64
+        import model
+        cnn_encoder = model.cnn_encoder
+        # cnn_encoder = cnn_encoder
+
+    t_image = tf.placeholder('float32', [None, image_size, image_size, 3], name = 'input_image')
+    t_caption = tf.placeholder(dtype=tf.int64, shape=[None, None], name='input_caption')
+    # t_z = tf.placeholder(tf.float32, [None, z_dim], name='z_noise')
+    # t_caption_p = tf.placeholder(dtype=tf.int64, shape=[None, None], name='caption_input_p')  #
+
+    net_p = cnn_encoder(t_image, is_train=False, reuse=False, name="image_encoder")
+    net_rnn = rnn_embed(t_caption, is_train=False, reuse=False, return_embed=False)
+    net_g, _ = generator_txt2img(net_p.outputs, # image --> image
+                    net_rnn,
+                    is_train=False, reuse=False)
+
+    if is_stackGAN:
+        net_gII, _ = stackG(net_g.outputs,
+                        net_rnn,
+                        is_train=False, reuse=False)
+
+    # use fake image as input
+    t_z = tf.placeholder(tf.float32, [None, z_dim], name='z_noise')   # debug, z --> image
+    net_g2, _ = generator_txt2img(t_z,
+                    net_rnn,
+                    is_train=False, reuse=True)        # debug
+    if is_stackGAN:
+        net_g2, _ = stackG(net_g2.outputs,
+                        net_rnn,
+                        is_train=False, reuse=True)
+
+    sess = tf.Session()
+    tl.layers.initialize_global_variables(sess)
+
+    # load the latest checkpoints
+    save_dir = "checkpoint"
+    # os.system("mkdir checkpoint/step3")
+    os.system("mkdir samples/step3")
+    net_e_name = os.path.join(save_dir, 'net_e.npz')
+    net_g_name = os.path.join(save_dir, 'net_g.npz')
+    net_p_name = os.path.join(save_dir, 'net_p.npz')
+
+    # load generator, RNN and Encoder
+    net_e_loaded_params = tl.files.load_npz(name=net_e_name)
+    tl.files.assign_params(sess, net_e_loaded_params, net_rnn)
+    net_g_loaded_params = tl.files.load_npz(name=net_g_name)
+    tl.files.assign_params(sess, net_g_loaded_params, net_g)
+    net_p_loaded_params = tl.files.load_npz(name=net_p_name)
+    tl.files.assign_params(sess, net_p_loaded_params, net_p)
+    if is_stackGAN:
+        net_stackG_name = os.path.join(save_dir, 'net_stackG.npz')
+        net_stackG_loaded_params = tl.files.load_npz(name=net_stackG_name)
+        tl.files.assign_params(sess, net_stackG_loaded_params, net_gII)
+
+    tmp = 'n'
+    for i in range(10):
+        if tmp == 'n':
+            idexs = get_random_int(min=0, max=n_captions_test-1, number=1)
+            b_images = images_test[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real image
+            b_images = threading_data(b_images, prepro_img, mode='translation')                                       # real image
+            b_caption = captions_ids_test[idexs]   # for debug sample_sentence = b_caption
+            b_caption = tl.prepro.pad_sequences(b_caption, padding='post') # for debug sample_sentence = b_caption
+        else:
+            b_images = gen_img
+        # sample_sentence = b_caption                                               # reconstruct from same sentences, test performance of reconstruction
+
+        print("source: %s" % ([vocab.id_to_word(word) for word in caption])
+            # print("%d-%d: target: %s" % (i, idx, [vocab.id_to_word(word) for word in sample_sentence[idx]]))
+        # exit()
+        # if is_stackGAN:
+        #     b_images = threading_data(b_images, imresize, size=[64, 64], interp='bilinear')
+        save_images(b_images, [1, 1], 'samples/step3/source_{}.png'.format(i))
+
+        try: # py2
+            sample_sentence = raw_input("[*] Please input your sentence:\n>>")
+        except: # py3
+            sample_sentence = input("[*] Please input your sentence:\n>>")
+
+        sample_sentence = [vocab.word_to_id(word) for word in sample_sentence]
+        sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
+
+        # sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post') # for debug sample_sentence = b_caption
+        if is_stackGAN:
+            gen_img = sess.run(net_gII.outputs, feed_dict={
+                                            t_image : b_images,
+                                            t_caption : sample_sentence,
+                                            })
+            # 256x256 images are too large, resize to 64
+
+            # gen_img = threading_data(gen_img, imresize, size=[64, 64], interp='bilinear')
+        else:
+            gen_img = sess.run(net_g.outputs, feed_dict={
+                                            t_image : b_images,
+                                            t_caption : sample_sentence,
+                                            })
+
+        # print(np.min(b_images), np.max(b_images))
+        # print(np.min(gen_img), np.max(gen_img))
+
+        save_images(gen_img, [1, 1], 'samples/step3/translate_{}.png'.format(i))
+        # print("Translate completed {}".format(i))
+
+        # debug
+        # b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
+        # gen_img2 = sess.run(net_g2.outputs, feed_dict={
+        #                                 t_z : b_z,
+        #                                 t_caption : b_caption,
+        #                                 })
+        # save_images(gen_img2, [8, 8], 'samples/step3/debug_{:02d}.png'.format(i))
+        print("Translate completed {}".format(i))
+
+
+        try: # py2
+            tmp = raw_input("[*] Keep changing this image? [y/n]\n>>")
+        except: # py3
+            tmp = input("[*] Keep changing this image? [y/n]\n>>")
+
+
+
 
 
 if __name__ == '__main__':
