@@ -743,27 +743,27 @@ def stackG_256(inputs, net_rnn, is_train, reuse):
         # print(net_h3.outputs)
 
         ## upsampling 16x16-->64x64
-        net_h4 = DeConv2d(net_h3, gf_dim*2, (4, 4), out_size=(32, 32), strides=(2, 2),    # 16x16--32x32
-                padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_1')
-            # you can use UpSampling2dLayer tf.image.resize_nearest_neighbor (method=1) instead of DeConv2d
-            # net_h4 = UpSampling2dLayer(net_h3, size=[32, 32], is_scale=False, method=1, align_corners=False, name='stackG_up/upsample2d_1')
+        # net_h4 = DeConv2d(net_h3, gf_dim*2, (4, 4), out_size=(32, 32), strides=(2, 2),    # 16x16--32x32
+        #         padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_1')
+        # you can use UpSampling2dLayer tf.image.resize_nearest_neighbor (method=1) instead of DeConv2d
+        net_h4 = UpSampling2dLayer(net_h3, size=[32, 32], is_scale=False, method=1, align_corners=False, name='stackG_up/upsample2d_1')
         net_h4 = Conv2d(net_h4, gf_dim*2, (3, 3), (1, 1),
                padding='SAME', W_init=w_init, b_init=b_init, name='stackG_up/conv2d_1')
         net_h4 = BatchNormLayer(net_h4, act=tf.nn.relu,
                 is_train=is_train, gamma_init=gamma_init, name='stackG_up/batch_norm_1')
 
-        net_h4 = DeConv2d(net_h4, gf_dim, (4, 4), out_size=(64, 64), strides=(2, 2),    # 32x32--64x64
-                padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_2')
-            # net_h4 = UpSampling2dLayer(net_h4, size=[64, 64], is_scale=False, method=1, align_corners=False, name='stackG_up/upsample2d_2')
+        # net_h4 = DeConv2d(net_h4, gf_dim, (4, 4), out_size=(64, 64), strides=(2, 2),    # 32x32--64x64
+        #         padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_2')
+        net_h4 = UpSampling2dLayer(net_h4, size=[64, 64], is_scale=False, method=1, align_corners=False, name='stackG_up/upsample2d_2')
         net_h4 = Conv2d(net_h4, gf_dim, (3, 3), (1, 1),
                padding='SAME', W_init=w_init, b_init=b_init, name='stackG_up/conv2d_2')
         net_h4 = BatchNormLayer(net_h4, act=tf.nn.relu,
                 is_train=is_train, gamma_init=gamma_init, name='stackG_up/batch_norm_2')
 
         ###
-        net_h4 = DeConv2d(net_h4, gf_dim//2, (4, 4), out_size=(128, 128), strides=(2, 2),    # 64x64--128x128
-                padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_3')
-            # net_h4 = UpSampling2dLayer(net_h4, size=[128, 128], is_scale=False, method=1, align_corners=False, name='stackG_up/upsample2d_3')
+        # net_h4 = DeConv2d(net_h4, gf_dim//2, (4, 4), out_size=(128, 128), strides=(2, 2),    # 64x64--128x128
+        #         padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='stackG_up/decon2d_3')
+        net_h4 = UpSampling2dLayer(net_h4, size=[128, 128], is_scale=False, method=1, align_corners=False, name='stackG_up/upsample2d_3')
         net_h4 = Conv2d(net_h4, gf_dim//2, (3, 3), (1, 1),
                padding='SAME', W_init=w_init, b_init=b_init, name='stackG_up/conv2d_3')
         net_h4 = BatchNormLayer(net_h4, act=tf.nn.relu,
@@ -1140,6 +1140,24 @@ def cnn_encoder_256(input_images, net_rnn_embed=None, is_train=True, reuse=False
         #     (node1_0.
         #      apply(tf.add, node1_1).
         #      apply(leaky_rectify, leakiness=0.2))
+
+        ## DH add for deeper network =======================================
+        net_h11 = Conv2d(net_h11, df_dim*4, (1, 1), (1, 1), act=None,
+                padding='SAME', W_init=w_init, b_init=b_init, name='cnn_encoder_256_h11/conv2d')
+        net_h11 = BatchNormLayer(net_h11, act=lambda x: tl.act.lrelu(x, 0.2),
+                is_train=is_train, gamma_init=gamma_init, name='cnn_encoder_256_h11/batchnorm')
+        for i in range(4): # DH add for deeper network
+            net_h = Conv2d(net_h11, df_dim*4, (3, 3), (1, 1),
+                   padding='SAME', W_init=w_init, b_init=b_init, name='cnn_encoder_256_residual{}/conv2d_1'.format(i))
+            net_h = BatchNormLayer(net_h, act=tf.nn.relu,
+                   is_train=is_train, gamma_init=gamma_init, name='cnn_encoder_256_residual{}/batch_norm_1'.format(i))
+            net_h = Conv2d(net_h, df_dim*4, (3, 3), (1, 1),
+                   padding='SAME', W_init=w_init, b_init=b_init, name='cnn_encoder_256_residual{}/conv2d_2'.format(i))
+            net_h = BatchNormLayer(net_h, #act=tf.nn.relu,
+                   is_train=is_train, gamma_init=gamma_init, name='cnn_encoder_256_residual{}/batch_norm_2'.format(i))
+            net_h11 = ElementwiseLayer(layer=[net_h11, net_h], combine_fn=tf.add, name='cnn_encoder_256_residual{}/add'.format(i))
+            net_h11.outputs = tf.nn.relu(net_h11.outputs)
+        ## end of DH add
 
         # print(net_h11.outputs)
         # net_h11 = ExpandDimsLayer(net_h11, 1, name='stackD_expand1')
