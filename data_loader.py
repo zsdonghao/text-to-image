@@ -6,7 +6,7 @@ import nltk
 import tensorlayer as tl
 from utils import *
 
-dataset = None#'102flowers' #
+dataset = '102flowers' #
 need_256 = True # set to True for stackGAN
 
 if dataset == '102flowers':
