@@ -782,11 +782,11 @@ def main_translation_2images():
     # use fake image as input
     t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')   # debug, z --> image
     net_g2, _ = generator_txt2img(t_z,
-                    net_rnn,
+                    net_cnn,
                     is_train=False, reuse=True)        # debug
     if is_stackGAN:
         net_g2, _ = stackG(net_g2.outputs,
-                        net_rnn,
+                        net_cnn,
                         is_train=False, reuse=True)
 
     sess = tf.Session()
