@@ -635,8 +635,8 @@ def main_translation_interact():
         cnn_encoder = model.cnn_encoder
         # cnn_encoder = cnn_encoder
 
-    t_image = tf.placeholder('float32', [None, image_size, image_size, 3], name = 'input_image')
-    t_caption = tf.placeholder(dtype=tf.int64, shape=[None, None], name='input_caption')
+    t_image = tf.placeholder('float32', [1, image_size, image_size, 3], name = 'input_image')
+    t_caption = tf.placeholder(dtype=tf.int64, shape=[1, None], name='input_caption')
     # t_z = tf.placeholder(tf.float32, [None, z_dim], name='z_noise')
     # t_caption_p = tf.placeholder(dtype=tf.int64, shape=[None, None], name='caption_input_p')  #
 
@@ -644,7 +644,7 @@ def main_translation_interact():
     net_rnn = rnn_embed(t_caption, is_train=False, reuse=False, return_embed=False)
     net_g, _ = generator_txt2img(net_p.outputs, # image --> image
                     net_rnn,
-                    is_train=False, reuse=False)
+                    is_train=False, reuse=False, batch_size=1)
 
     if is_stackGAN:
         net_gII, _ = stackG(net_g.outputs,
@@ -773,7 +773,8 @@ if __name__ == '__main__':
     elif args.train_step == "translation":
         main_translation()
 
-
+    elif args.train_step == "translation_interact":
+        main_translation_interact()
 
 
 

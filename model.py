@@ -46,7 +46,7 @@ def rnn_embed(input_seqs, is_train, reuse, return_embed=True):
     else:
         return network
 
-def generator_txt2img(input_z, net_rnn_embed=None, is_train=True, reuse=False):
+def generator_txt2img(input_z, net_rnn_embed=None, is_train=True, reuse=False, batch_size=64):
     # IMPLEMENTATION based on : https://github.com/paarthneekhara/text-to-image/blob/master/model.py
     s = image_size
     s2, s4, s8, s16 = int(s/2), int(s/4), int(s/8), int(s/16)
