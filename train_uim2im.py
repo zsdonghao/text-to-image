@@ -749,6 +749,115 @@ def main_translation_interact():
 
 
 
+def main_translation_2images():
+    is_stackGAN = True # use stackGAN and use E with 256x256x3 input, otherwise, 64x64x3 as input
+    if is_stackGAN:
+        image_size = 256
+        stackG = stackG_256
+        cnn_encoder = cnn_encoder_256
+        images_test = images_test_256
+    else:
+        image_size = 64
+        import model
+        cnn_encoder = model.cnn_encoder
+        # cnn_encoder = cnn_encoder
+
+    t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'input_image')
+    t_image_condition = tf.placeholder('float32', [batch_size, 64, 64, 3], name = 'input_image')
+    # t_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='input_caption')
+    # t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
+    # t_caption_p = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='caption_input_p')  #
+
+    net_p = cnn_encoder(t_image, is_train=False, reuse=False, name="image_encoder")
+    net_cnn = cnn_encoder(t_wrong_image, is_train=False, reuse=False, name='cnn')  # condition
+    net_g, _ = generator_txt2img(net_p.outputs, # image --> image
+                    net_cnn,
+                    is_train=False, reuse=False)
+
+    if is_stackGAN:
+        net_gII, _ = stackG(net_g.outputs,
+                        net_rnn,
+                        is_train=False, reuse=False)
+
+    # use fake image as input
+    t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')   # debug, z --> image
+    net_g2, _ = generator_txt2img(t_z,
+                    net_rnn,
+                    is_train=False, reuse=True)        # debug
+    if is_stackGAN:
+        net_g2, _ = stackG(net_g2.outputs,
+                        net_rnn,
+                        is_train=False, reuse=True)
+
+    sess = tf.Session()
+    tl.layers.initialize_global_variables(sess)
+
+    # load the latest checkpoints
+    save_dir = "checkpoint"
+    # os.system("mkdir checkpoint/step3")
+    os.system("mkdir samples/step3")
+    # net_e_name = os.path.join(save_dir, 'net_e.npz')
+    net_c_name = os.path.join(save_dir, 'net_c.npz')
+    net_g_name = os.path.join(save_dir, 'net_g.npz')
+    net_p_name = os.path.join(save_dir, 'net_p.npz')
+
+    # load generator, RNN and Encoder
+    # net_e_loaded_params = tl.files.load_npz(name=net_e_name)
+    # tl.files.assign_params(sess, net_e_loaded_params, net_rnn)
+    net_c_loaded_params = tl.files.load_npz(name=net_c_name)
+    tl.files.assign_params(sess, net_c_loaded_params, net_cnn)
+    net_g_loaded_params = tl.files.load_npz(name=net_g_name)
+    tl.files.assign_params(sess, net_g_loaded_params, net_g)
+    net_p_loaded_params = tl.files.load_npz(name=net_p_name)
+    tl.files.assign_params(sess, net_p_loaded_params, net_p)
+    if is_stackGAN:
+        net_stackG_name = os.path.join(save_dir, 'net_stackG.npz')
+        net_stackG_loaded_params = tl.files.load_npz(name=net_stackG_name)
+        tl.files.assign_params(sess, net_stackG_loaded_params, net_gII)
+
+    for i in range(1):
+        idexs = get_random_int(min=0, max=n_captions_test-1, number=batch_size)
+            # # idexs = list(range(0, batch_size*n_captions_per_image, n_captions_per_image))   #
+        b_images = images_test[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real image
+        b_images = threading_data(b_images, prepro_img, mode='translation')                                       # real image
+        # b_caption = captions_ids_test[idexs]   # for debug sample_sentence = b_caption
+        # b_caption = tl.prepro.pad_sequences(b_caption, padding='post') # for debug sample_sentence = b_caption
+
+        b_images_c = threading_data(b_images, resize, size=[64, 64], interp='bilinear', mode=None)
+
+
+        # sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post') # for debug sample_sentence = b_caption
+        if is_stackGAN:
+            gen_img = sess.run(net_gII.outputs, feed_dict={
+                                            t_image : b_images,
+                                            t_image_condition : b_images_c,
+                                            # t_caption : sample_sentence,
+                                            })
+            # 256x256 images are too large, resize to 64
+            b_images = threading_data(b_images, imresize, size=[64, 64], interp='bilinear')
+            gen_img = threading_data(gen_img, imresize, size=[64, 64], interp='bilinear')
+        else:
+            gen_img = sess.run(net_g.outputs, feed_dict={
+                                            t_image : b_images,
+                                            # t_caption : sample_sentence,
+                                            t_image_condition : b_images_c,
+                                            })
+
+        # print(np.min(b_images), np.max(b_images))
+        # print(np.min(gen_img), np.max(gen_img))
+        save_images(b_images, [8, 8], 'samples/step3/source_{:02d}.png'.format(i))
+        save_images(gen_img, [8, 8], 'samples/step3/translate_{:02d}.png'.format(i))
+        # print("Translate completed {}".format(i))
+
+        # debug
+        # b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
+        # gen_img2 = sess.run(net_g2.outputs, feed_dict={
+        #                                 t_z : b_z,
+        #                                 t_caption : b_caption,
+        #                                 })
+        # save_images(gen_img2, [8, 8], 'samples/step3/debug_{:02d}.png'.format(i))
+        print("Translate completed {}".format(i))
+
 
 
 if __name__ == '__main__':
