@@ -708,7 +708,7 @@ def main_translation_interact():
         except: # py3
             sample_sentence = input("[*] Please input your sentence:\n>>")
 
-        sample_sentence = [vocab.word_to_id(word) for word in sample_sentence]
+        sample_sentence = [[vocab.word_to_id(word) for word in sample_sentence] + [vocab.end_id]]
         sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
 
         # sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post') # for debug sample_sentence = b_caption
