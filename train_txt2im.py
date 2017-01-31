@@ -21,11 +21,10 @@ from utils import *
 from model import *
 
 
-# is_deep = True
-# if is_deep:
-#     generator_txt2img = generator_txt2img_deep
-#     discriminator_txt2img = discriminator_txt2img_deep
 
+generator_txt2img = generator_txt2img_resnet
+discriminator_txt2img = discriminator_txt2img_resnet
+#    #   cnn_encoder = cnn_encoder_resnet # for text-image mapping
 
 os.system("mkdir samples")
 os.system("mkdir checkpoint")

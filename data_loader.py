@@ -39,7 +39,8 @@ if dataset == '102flowers':
     print(" * %d x %d captions found " % (len(captions_dict), len(lines)))
 
     ## build vocab
-    _ = tl.nlp.create_vocab(processed_capts, word_counts_output_file=VOC_FIR, min_word_count=1)
+    if not os.path.isfile('vocab.txt'):
+        _ = tl.nlp.create_vocab(processed_capts, word_counts_output_file=VOC_FIR, min_word_count=1)
     vocab = tl.nlp.Vocabulary(VOC_FIR, start_word="<S>", end_word="</S>", unk_word="<UNK>")
 
     ## store all captions ids in list

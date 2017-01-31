@@ -26,11 +26,7 @@ import argparse
 ## Load Oxford 102 flowers dataset
 from data_loader import *
 
-
-# is_deep = True
-# if is_deep:
-# cnn_encoder = cnn_encoder_deep # use shallow cnn for text-image mapping, deep cnn for projection
-
+generator_txt2img = generator_txt2img_resnet
 
 def change_id(sentences, id_list=[], target_id=0):
     b_sentences = copy.deepcopy(sentences)
@@ -445,7 +441,6 @@ def main_train_imageEncoder():
 
         print("step[{}/{}] loss:{}".format(step, n_step, err))
 
-
         # b_images = sess.run(net_gII.outputs, feed_dict={ # debug
         #                         t_caption : b_caption,
         #                         t_z : b_z})
@@ -457,7 +452,6 @@ def main_train_imageEncoder():
         # print("[*] Sampling images")
         # combine_and_save_image_sets([b_images, gen_images], 'samples/step2')
         # exit()
-
 
         if (step != 0) and (step % 1000) == 0:
             b_images = sess.run(net_g3.outputs, feed_dict={
@@ -747,7 +741,6 @@ def main_translation_interact():
             tmp = raw_input("[*] Keep changing this image? [y/n]\n>>")
         except: # py3
             tmp = input("[*] Keep changing this image? [y/n]\n>>")
-
 
 
 def main_translation_2images():
