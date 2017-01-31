@@ -264,9 +264,9 @@ def generator_txt2img_resnet(input_z, net_rnn_embed=None, is_train=True, reuse=F
         # net_h9 = DeConv2d(net_h8, gf_dim, (4, 4), out_size=(s2, s2), strides=(2, 2),
         #         padding='SAME', batch_size=batch_size, act=None, W_init=w_init, b_init=b_init, name='g_h9/decon2d')
         net_h9 = UpSampling2dLayer(net_h8, size=[s2, s2], is_scale=False, method=1,
-                align_corners=False, name='g_h8/upsample2d')
+                align_corners=False, name='g_h9/upsample2d')
         net_h9 = Conv2d(net_h9, gf_dim, (3, 3), (1, 1),
-                padding='SAME', act=None, W_init=w_init, b_init=b_init, name='g_h8/conv2d')
+                padding='SAME', act=None, W_init=w_init, b_init=b_init, name='g_h9/conv2d')
         net_h9 = BatchNormLayer(net_h9, act=tf.nn.relu, is_train=is_train,
                 gamma_init=gamma_init, name='g_h9/batch_norm')
 
