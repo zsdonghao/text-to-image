@@ -3,11 +3,19 @@ import os
 import re
 import time
 import nltk
+import re
+import string
 import tensorlayer as tl
 from utils import *
 
+
 dataset = '102flowers' #
 need_256 = True # set to True for stackGAN
+
+def preprocess_caption(line):
+    prep_line = re.sub('[%s]' % re.escape(string.punctuation), ' ', line.rstrip())
+    prep_line = prep_line.replace('-', ' ')
+    return prep_line
 
 if dataset == '102flowers':
     """
@@ -32,8 +40,9 @@ if dataset == '102flowers':
                 t = open(file_dir,'r')
                 lines = []
                 for line in t:
-                    lines.append(line.rstrip()) # remove \n
-                    processed_capts.append(tl.nlp.process_sentence(line.rstrip(), start_word="<S>", end_word="</S>"))
+                    line = preprocess_caption(line)
+                    lines.append(line)
+                    processed_capts.append(tl.nlp.process_sentence(line, start_word="<S>", end_word="</S>"))
                 assert len(lines) == 10, "Every flower image have 10 captions"
                 captions_dict[key] = lines
     print(" * %d x %d captions found " % (len(captions_dict), len(lines)))
@@ -41,6 +50,8 @@ if dataset == '102flowers':
     ## build vocab
     if not os.path.isfile('vocab.txt'):
         _ = tl.nlp.create_vocab(processed_capts, word_counts_output_file=VOC_FIR, min_word_count=1)
+    else:
+        print("WARNING: vocab.txt already exists")
     vocab = tl.nlp.Vocabulary(VOC_FIR, start_word="<S>", end_word="</S>", unk_word="<UNK>")
 
     ## store all captions ids in list
@@ -92,7 +103,8 @@ if dataset == '102flowers':
             img = img.astype(np.float32)
 
             images_256.append(img)
-    images_256 = np.array(images_256)
+    # images = np.array(images)
+    # images_256 = np.array(images_256)
     print(" * loading and resizing took %ss" % (time.time()-s))
 
     n_images = len(captions_dict)
@@ -148,3 +160,17 @@ if dataset == '102flowers':
     # save_images(b_images, [8, 8], 'temp2.png')
     # # tl.visualize.images2d(b_images, second=5, saveable=True, name='temp2')
     # exit()
+
+import pickle
+def save_all(targets, file):
+    with open(file, 'wb') as f:
+        pickle.dump(targets, f)
+
+# targets = (n_captions_train, n_captions_test, n_captions_per_image, , \
+#     images_train_256, images_test, images_test_256, captions_ids_train, captions_ids_test,
+# targets = vocab
+save_all(vocab, '_vocab.pickle')
+save_all((images_train_256, images_train), '_image_train.pickle')
+save_all((images_test_256, images_test), '_image_test.pickle')
+save_all((n_captions_train, n_captions_test, n_captions_per_image, n_images_train, n_images_test), '_n.pickle')
+save_all((captions_ids_train, captions_ids_test), '_caption.pickle')

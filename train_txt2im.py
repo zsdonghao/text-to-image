@@ -22,6 +22,7 @@ from model import *
 
 
 
+
 generator_txt2img = generator_txt2img_resnet
 discriminator_txt2img = discriminator_txt2img_resnet
 #    #   cnn_encoder = cnn_encoder_resnet # for text-image mapping
@@ -47,7 +48,24 @@ Code References
 """
 ###======================== PREPARE DATA ====================================###
 ## Load Oxford 102 flowers dataset
-from data_loader import *
+# from data_loader import *
+import pickle
+
+with open("_vocab.pickle", 'rb') as f:
+    vocab = pickle.load(f)
+with open("_image_train.pickle", 'rb') as f:
+    images_train_256, images_train = pickle.load(f)
+with open("_image_test.pickle", 'rb') as f:
+    images_test_256, images_test = pickle.load(f)
+with open("_n.pickle", 'rb') as f:
+    n_captions_train, n_captions_test, n_captions_per_image, n_images_train, n_images_test = pickle.load(f)
+with open("_caption.pickle", 'rb') as f:
+    captions_ids_train, captions_ids_test = pickle.load(f)
+images_train_256 = np.array(images_train_256)
+images_test_256 = np.array(images_test_256)
+images_train = np.array(images_train)
+images_test = np.array(images_test)
+# exit()
 
 ###======================== DEFIINE MODEL ===================================###
 
@@ -200,7 +218,7 @@ sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
 
 n_epoch = 1000   # 600 when pre-trained rnn
 print_freq = 1
-n_batch_epoch = int(n_images / batch_size)
+n_batch_epoch = int(n_captions_train / batch_size)
 for epoch in range(n_epoch+1):
     start_time = time.time()
 
@@ -224,7 +242,7 @@ for epoch in range(n_epoch+1):
         b_real_images = images_train[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real images   (64, 64, 64, 3)
         ## get wrong caption
         idexs = get_random_int(min=0, max=n_captions_train-1, number=batch_size)
-        b_wrong_caption = captions_ids[idexs]
+        b_wrong_caption = captions_ids_train[idexs]
         b_wrong_caption = tl.prepro.pad_sequences(b_wrong_caption, padding='post')                                    # mismatched text
         ## get wrong image
         idexs2 = get_random_int(min=0, max=n_images_train-1, number=batch_size)        # remove if DCGAN only
@@ -301,7 +319,7 @@ for epoch in range(n_epoch+1):
         # save_images(b_real_images, [8, 8], 'temp_real_image.png')
         # save_images(b_wrong_images, [8, 8], 'temp_wrong_image.png')
 
-    if (epoch != 0) and (epoch % 100) == 0:
+    if (epoch != 0) and (epoch % 10) == 0:
         tl.files.save_npz(net_cnn.all_params, name=net_c_name, sess=sess)
         tl.files.save_npz(net_rnn.all_params, name=net_e_name, sess=sess)
         tl.files.save_npz(net_g.all_params, name=net_g_name, sess=sess)
