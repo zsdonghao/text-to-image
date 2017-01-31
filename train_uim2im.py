@@ -696,11 +696,12 @@ def main_translation_interact():
             b_images = gen_img
         # sample_sentence = b_caption                                               # reconstruct from same sentences, test performance of reconstruction
 
-        print("source: %s" % ([vocab.id_to_word(word) for word in caption])
+        print("source: %s" % ([vocab.id_to_word(word) for word in caption]))
             # print("%d-%d: target: %s" % (i, idx, [vocab.id_to_word(word) for word in sample_sentence[idx]]))
         # exit()
         # if is_stackGAN:
         #     b_images = threading_data(b_images, imresize, size=[64, 64], interp='bilinear')
+
         save_images(b_images, [1, 1], 'samples/step3/source_{}.png'.format(i))
 
         try: # py2
