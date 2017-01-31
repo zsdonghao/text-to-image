@@ -21,10 +21,8 @@ from utils import *
 from model import *
 
 
-
-
-generator_txt2img = generator_txt2img_resnet
-discriminator_txt2img = discriminator_txt2img_resnet
+# generator_txt2img = generator_txt2img_resnet
+# discriminator_txt2img = discriminator_txt2img_resnet
 #    #   cnn_encoder = cnn_encoder_resnet # for text-image mapping
 
 os.system("mkdir samples")
@@ -65,7 +63,6 @@ images_train_256 = np.array(images_train_256)
 images_test_256 = np.array(images_test_256)
 images_train = np.array(images_train)
 images_test = np.array(images_test)
-# exit()
 
 ###======================== DEFIINE MODEL ===================================###
 
@@ -210,15 +207,16 @@ sample_sentence = ["the flower shown has yellow anther red pistil and bright red
 # sample_sentence = captions_ids_test[0:sample_size]
 for i, sentence in enumerate(sample_sentence):
     print("seed: %s" % sentence)
+    sentence = preprocess_caption(sentence)
     sample_sentence[i] = [vocab.word_to_id(word) for word in nltk.tokenize.word_tokenize(sentence)] + [vocab.end_id]    # add END_ID
     # sample_sentence[i] = [vocab.word_to_id(word) for word in sentence]
     # print(sample_sentence[i])
 sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
 
-
-n_epoch = 1000   # 600 when pre-trained rnn
+n_epoch = 600
 print_freq = 1
-n_batch_epoch = int(n_captions_train / batch_size)
+n_batch_epoch = int(n_images_train / batch_size)
+
 for epoch in range(n_epoch+1):
     start_time = time.time()
 

@@ -12,10 +12,7 @@ from utils import *
 dataset = '102flowers' #
 need_256 = True # set to True for stackGAN
 
-def preprocess_caption(line):
-    prep_line = re.sub('[%s]' % re.escape(string.punctuation), ' ', line.rstrip())
-    prep_line = prep_line.replace('-', ' ')
-    return prep_line
+
 
 if dataset == '102flowers':
     """

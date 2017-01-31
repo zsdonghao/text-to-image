@@ -4,6 +4,8 @@ import random
 import scipy
 import scipy.misc
 import numpy as np
+import re
+import string
 
 """ The functions here will be merged into TensorLayer after finishing this project.
 """
@@ -37,6 +39,10 @@ def get_random_int(min=0, max=10, number=5):
     """
     return [random.randint(min,max) for p in range(0,number)]
 
+def preprocess_caption(line):
+    prep_line = re.sub('[%s]' % re.escape(string.punctuation), ' ', line.rstrip())
+    prep_line = prep_line.replace('-', ' ')
+    return prep_line
 
 
 ## Save images
