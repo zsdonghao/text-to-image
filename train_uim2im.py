@@ -43,7 +43,7 @@ images_train = np.array(images_train)
 images_test = np.array(images_test)
 
 
-generator_txt2img = generator_txt2img_resnet
+# generator_txt2img = generator_txt2img_resnet
 
 def change_id(sentences, id_list=[], target_id=0):
     b_sentences = copy.deepcopy(sentences)
