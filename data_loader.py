@@ -163,9 +163,6 @@ def save_all(targets, file):
     with open(file, 'wb') as f:
         pickle.dump(targets, f)
 
-# targets = (n_captions_train, n_captions_test, n_captions_per_image, , \
-#     images_train_256, images_test, images_test_256, captions_ids_train, captions_ids_test,
-# targets = vocab
 save_all(vocab, '_vocab.pickle')
 save_all((images_train_256, images_train), '_image_train.pickle')
 save_all((images_test_256, images_test), '_image_test.pickle')
