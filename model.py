@@ -168,15 +168,24 @@ def cnn_encoder(inputs, is_train, reuse, name="cnn"):
         net_h1 = BatchNormLayer(net_h1, act=lambda x: tl.act.lrelu(x, 0.2),
                 is_train=is_train, gamma_init=gamma_init, name='p/h1/batch_norm')
 
+        if name != 'cnn': # debug for training image encoder in step 2
+            net_h1 = DropoutLayer(net_h1, keep=0.8, is_fix=True, name='p/h1/drop1')
+
         net_h2 = Conv2d(net_h1, df_dim*4, (5, 5), (2, 2), act=None,
                 padding='SAME', W_init=w_init, b_init=b_init, name='p/h2/conv2d')
         net_h2 = BatchNormLayer(net_h2, act=lambda x: tl.act.lrelu(x, 0.2),
                 is_train=is_train, gamma_init=gamma_init, name='p/h2/batch_norm')
 
+        if name != 'cnn': # debug for training image encoder in step 2
+            net_h2 = DropoutLayer(net_h2, keep=0.8, is_fix=True, name='p/h2/drop1')
+
         net_h3 = Conv2d(net_h2, df_dim*8, (5, 5), (2, 2), act=None,
                 padding='SAME', W_init=w_init, b_init=b_init, name='p/h3/conv2d')
         net_h3 = BatchNormLayer(net_h3, act=lambda x: tl.act.lrelu(x, 0.2),
                 is_train=is_train, gamma_init=gamma_init, name='p/h3/batch_norm')
+
+        if name != 'cnn': # debug for training image encoder in step 2
+            net_h3 = DropoutLayer(net_h3, keep=0.8, is_fix=True, name='p/h1/drop1')
 
         net_h4 = FlattenLayer(net_h3, name='p/h4/flatten')
         net_h4 = DenseLayer(net_h4, n_units=(t_dim if name=="cnn" else z_dim),
