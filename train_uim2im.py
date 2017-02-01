@@ -304,15 +304,15 @@ def main_train_imageEncoder():
     # E_256, resid   57720: 0.72
     import model
     is_stackGAN = False     # use stackGAN and use E with 256x256x3 input
-    is_weighted_loss = True # use weighted loss
+    is_weighted_loss = False # use weighted loss
 
     if is_stackGAN:
         stackG = model.stackG_256
         stackD = model.stackD_256
-        cnn_encoder = model.cnn_encoder_256
+        # cnn_encoder = model.cnn_encoder_256
+        cnn_encoder = model.cnn_encoder # if use DownSampling2dLayer
     else:
         cnn_encoder = model.cnn_encoder
-
 
     t_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='caption_input')
     t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
@@ -321,10 +321,10 @@ def main_train_imageEncoder():
     net_g, _ = generator_txt2img(t_z, net_rnn, is_train=False, reuse=False)
     if is_stackGAN:
         net_gII, _ = stackG(net_g.outputs, net_rnn, is_train=False, reuse=False)
-        net_p = cnn_encoder(net_gII.outputs, is_train=True, reuse=False, name="image_encoder")
-        ## alternatively, downsampling from 256 to 64
-        # net_gII = DownSampling2dLayer(net_gII, size=[64, 64], is_scale=False, method=0, name='stackG_output_downsampling') # 0: bilinear 1: nearest
         # net_p = cnn_encoder(net_gII.outputs, is_train=True, reuse=False, name="image_encoder")
+        ## alternatively, downsampling from 256 to 64
+        net_gII_64 = DownSampling2dLayer(net_gII, size=[64, 64], is_scale=False, method=0, name='stackG_output_downsampling') # 0: bilinear 1: nearest
+        net_p = cnn_encoder(net_gII_64.outputs, is_train=True, reuse=False, name="image_encoder")
         if is_weighted_loss:
             ## use weighted loss
             net_d, _ = stackD(net_gII.outputs, net_rnn, is_train=False, reuse=False)
