@@ -19,7 +19,7 @@ import random
 import copy
 
 from utils import *
-from model import *
+import model
 
 import argparse
 
@@ -42,9 +42,6 @@ with open("_caption.pickle", 'rb') as f:
 images_train = np.array(images_train)
 images_test = np.array(images_test)
 
-
-# generator_txt2img = generator_txt2img_resnet
-
 def change_id(sentences, id_list=[], target_id=0):
     b_sentences = copy.deepcopy(sentences)
     for i, sen in enumerate(b_sentences):
@@ -57,9 +54,11 @@ def change_id(sentences, id_list=[], target_id=0):
 def main_train_stackGAN():
     image_size = 256
     images_train = images_train_256
-    stackG = stackG_256
-    stackD = stackD_256
-    # print(images_train.shape)
+    stackG = model.stackG_256
+    stackD = model.stackD_256
+    generator_txt2img = model.generator_txt2img
+    cnn_encoder = model.cnn_encoder
+    rnn_embed = model.rnn_embed
 
     t_real_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'real_image')
     t_wrong_image = tf.placeholder('float32', [batch_size ,image_size, image_size, 3], name = 'wrong_image')
@@ -302,7 +301,6 @@ def main_train_imageEncoder():
     # stackG deep E  1000: 0.75;
     # E_256,         2000: 0.87 6000: 0.8 10000: 0.77 13172: 0.76
     # E_256, resid   57720: 0.72
-    import model
     is_stackGAN = False     # use stackGAN and use E with 256x256x3 input
     is_weighted_loss = False # use weighted loss
 
@@ -313,6 +311,11 @@ def main_train_imageEncoder():
         cnn_encoder = model.cnn_encoder # if use DownSampling2dLayer
     else:
         cnn_encoder = model.cnn_encoder
+
+    generator_txt2img = model.generator_txt2img
+    cnn_encoder = model.cnn_encoder
+    rnn_embed = model.rnn_embed
+    discriminator_txt2img = model.discriminator_txt2img
 
     t_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='caption_input')
     t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
@@ -538,14 +541,17 @@ def main_translation():
     is_stackGAN = None # use stackGAN and use E with 256x256x3 input, otherwise, 64x64x3 as input
     if is_stackGAN:
         image_size = 256
-        stackG = stackG_256
-        cnn_encoder = cnn_encoder_256
-        images_test = images_test_256
+        stackG = model.stackG_256
+        cnn_encoder = model.cnn_encoder_256
+        images_test = model.images_test_256
     else:
         global images_test
         image_size = 64
-        import model
         cnn_encoder = model.cnn_encoder
+
+    generator_txt2img = model.generator_txt2img
+    cnn_encoder = model.cnn_encoder
+    rnn_embed = model.rnn_embed
 
 
     t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'input_image')
