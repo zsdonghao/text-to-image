@@ -303,13 +303,14 @@ def main_train_imageEncoder():
     # E_256,         2000: 0.87 6000: 0.8 10000: 0.77 13172: 0.76
     # E_256, resid   57720: 0.72
     is_stackGAN = True     # use stackGAN and use E with 256x256x3 input
-    is_weighted_loss = False # use weighted loss
+    is_weighted_loss = True # use weighted loss
 
     if is_stackGAN:
         stackG = model.stackG_256
         stackD = model.stackD_256
-        # cnn_encoder = model.cnn_encoder_256
-        cnn_encoder = model.cnn_encoder # if use DownSampling2dLayer
+        # cnn_encoder = model.cnn_encoder_256     # if 256 input
+        # cnn_encoder = model.cnn_encoder         # if 64 input
+        cnn_encoder = model.cnn_encoder_resnet
     else:
         cnn_encoder = model.cnn_encoder
 
@@ -522,13 +523,13 @@ def main_train_imageEncoder():
             tl.files.save_npz(net_p.all_params, name=net_p_name, sess=sess)
             # tl.files.save_npz(net_p.all_params, name=net_p_name + "_" + str(step), sess=sess)
 
-
 def main_translation():
     is_stackGAN = True # use stackGAN and use E with 256x256x3 input, otherwise, 64x64x3 as input
     if is_stackGAN:
         stackG = model.stackG_256
         image_size = 64                         # for 64 input
         cnn_encoder = model.cnn_encoder         # for 64 input
+        cnn_encoder = model.cnn_encoder_resnet  # for 64 input
         # image_size = 256                      # for 256 input
         # cnn_encoder = model.cnn_encoder_256   # for 256 input
         # images_test = images_test_256         # for 256 input
@@ -619,11 +620,14 @@ def main_translation():
         b_caption = captions_ids_test[idexs]   # for debug sample_sentence = b_caption
         b_caption = tl.prepro.pad_sequences(b_caption, padding='post') # for debug sample_sentence = b_caption
 
-        # b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)    # use fake image
-        # b_images = sess.run(net_g2.outputs, feed_dict={                                             # use fake image
-        #                                 t_z : b_z,                                                  # use fake image
-        #                                 t_caption : b_caption,                                      # use fake image
-        #                                 })                                                          # use fake image
+        b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)    # use fake image
+        b_images = sess.run(net_g2.outputs, feed_dict={                                             # use fake image
+                                        t_z : b_z,                                                  # use fake image
+                                        t_caption : b_caption,                                      # use fake image
+                                        })                                                          # use fake image
+        if is_stackGAN:
+            b_images = threading_data(b_images, imresize, size=[64, 64], interp='bilinear')
+            b_images = threading_data(b_images, prepro_img, mode='translation')
 
         # sample_sentence = change_id(b_caption, color_ids, vocab.word_to_id("yellow"))
         sample_sentence = b_caption                                               # reconstruct from same sentences, test performance of reconstruction
