@@ -20,6 +20,7 @@ import copy
 
 from utils import *
 import model
+from model import *
 
 import argparse
 
@@ -301,7 +302,7 @@ def main_train_imageEncoder():
     # stackG deep E  1000: 0.75;
     # E_256,         2000: 0.87 6000: 0.8 10000: 0.77 13172: 0.76
     # E_256, resid   57720: 0.72
-    is_stackGAN = False     # use stackGAN and use E with 256x256x3 input
+    is_stackGAN = True     # use stackGAN and use E with 256x256x3 input
     is_weighted_loss = False # use weighted loss
 
     if is_stackGAN:
@@ -324,7 +325,8 @@ def main_train_imageEncoder():
     net_g, _ = generator_txt2img(t_z, net_rnn, is_train=False, reuse=False)
     if is_stackGAN:
         net_gII, _ = stackG(net_g.outputs, net_rnn, is_train=False, reuse=False)
-        # net_p = cnn_encoder(net_gII.outputs, is_train=True, reuse=False, name="image_encoder")
+        ##
+        # net_p = model.cnn_encoder_256(net_gII.outputs, is_train=True, reuse=False, name="image_encoder")
         ## alternatively, downsampling from 256 to 64
         net_gII_64 = DownSampling2dLayer(net_gII, size=[64, 64], is_scale=False, method=0, name='stackG_output_downsampling') # 0: bilinear 1: nearest
         net_p = cnn_encoder(net_gII_64.outputs, is_train=True, reuse=False, name="image_encoder")
@@ -447,22 +449,6 @@ def main_train_imageEncoder():
             log = " ** init lr: %f  decay_every: %d, lr_decay: %f" % (lr, decay_every, lr_decay)
             print(log)
 
-        # ## get matched text
-        # idexs = get_random_int(min=0, max=n_captions_train-1, number=batch_size)
-        # b_real_caption = captions_ids_train[idexs]                                                                      # remove if DCGAN only
-        # b_real_caption = tl.prepro.pad_sequences(b_real_caption, padding='post')     # matched text  (64, any)    # remove if DCGAN only
-        # ## get real image
-        # b_real_images = images_train[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]   # real images   (64, 64, 64, 3)
-        # ## get wrong caption
-        # idexs = get_random_int(min=0, max=n_captions_train-1, number=batch_size)
-        # b_wrong_caption = captions_ids[idexs]
-        # b_wrong_caption = tl.prepro.pad_sequences(b_wrong_caption, padding='post')                                    # mismatched text
-        # ## get wrong image
-        # idexs2 = get_random_int(min=0, max=n_images_train-1, number=batch_size)        # remove if DCGAN only
-        # b_wrong_images = images_train[idexs2]                                               # remove if DCGAN only
-        # ## get noise
-        # b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
-
         idexs = get_random_int(min=0, max=n_captions_train-1, number=batch_size)
         b_caption = captions_ids_train[idexs]
         b_caption = tl.prepro.pad_sequences(b_caption, padding='post')
@@ -472,18 +458,18 @@ def main_train_imageEncoder():
 
         b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
 
-        # _, err = sess.run([train_op, loss], feed_dict={
-        #                             t_caption : b_caption,
-        #                             t_z : b_z,
-        #                                 })
-
-        ## debug probability of fake image to be real
-        _, err, im, p = sess.run([train_op, loss, net_g.outputs, net_d.outputs], feed_dict={ # debug
+        _, err = sess.run([train_op, loss], feed_dict={
                                     t_caption : b_caption,
                                     t_z : b_z,
                                         })
 
-        # print("step[{}/{}] loss:{}".format(step, n_step, err))
+        ## debug probability of fake image to be real
+        # _, err, im, p = sess.run([train_op, loss, net_g.outputs, net_d.outputs], feed_dict={ # debug
+        #                             t_caption : b_caption,
+        #                             t_z : b_z,
+        #                                 })
+
+        print("step[{}/{}] loss:{}".format(step, n_step, err))
 
         ## debug probability of real image to be real
         # idexs = get_random_int(min=0, max=n_captions_test-1, number=batch_size)
@@ -495,10 +481,10 @@ def main_train_imageEncoder():
         #                             t_caption : b_caption,
         #                             t_image : im,
         #                                 })
-        for i, j in enumerate(p):
-            print(i, j)
-        save_images(im, [8, 8], 'samples/_fake.png')
-        exit()
+        # for i, j in enumerate(p):
+        #     print(i, j)
+        # save_images(im, [8, 8], 'samples/_fake.png')
+        # exit()
 
         # b_images = sess.run(net_gII.outputs, feed_dict={ # debug
         #                         t_caption : b_caption,
@@ -538,12 +524,14 @@ def main_train_imageEncoder():
 
 
 def main_translation():
-    is_stackGAN = None # use stackGAN and use E with 256x256x3 input, otherwise, 64x64x3 as input
+    is_stackGAN = True # use stackGAN and use E with 256x256x3 input, otherwise, 64x64x3 as input
     if is_stackGAN:
-        image_size = 256
         stackG = model.stackG_256
-        cnn_encoder = model.cnn_encoder_256
-        images_test = model.images_test_256
+        image_size = 64                         # for 64 input
+        cnn_encoder = model.cnn_encoder         # for 64 input
+        # image_size = 256                      # for 256 input
+        # cnn_encoder = model.cnn_encoder_256   # for 256 input
+        # images_test = images_test_256         # for 256 input
     else:
         global images_test
         image_size = 64
@@ -553,7 +541,6 @@ def main_translation():
     cnn_encoder = model.cnn_encoder
     rnn_embed = model.rnn_embed
 
-
     t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'input_image')
     t_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='input_caption')
     # t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')
@@ -562,13 +549,10 @@ def main_translation():
     net_p = cnn_encoder(t_image, is_train=False, reuse=False, name="image_encoder")
     net_rnn = rnn_embed(t_caption, is_train=False, reuse=False, return_embed=False)
     net_g, _ = generator_txt2img(net_p.outputs, # image --> image
-                    net_rnn,
-                    is_train=False, reuse=False)
+                    net_rnn, is_train=False, reuse=False)
 
     if is_stackGAN:
-        net_gII, _ = stackG(net_g.outputs,
-                        net_rnn,
-                        is_train=False, reuse=False)
+        net_gII, _ = stackG(net_g.outputs, net_rnn, is_train=False, reuse=False)
 
     # use fake image as input
     t_z = tf.placeholder(tf.float32, [batch_size, z_dim], name='z_noise')   # debug, z --> image
@@ -625,7 +609,7 @@ def main_translation():
     #     # print(sample_sentence[i])
     # sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
 
-    color_ids = [vocab.word_to_id(w) for w in ["red", "green", "yellow", "blue", "white", "pink", "purple", "orange", "black", "orange-yellow", "brown", "pink-lavendar", "lavender"]]
+    color_ids = [vocab.word_to_id(w) for w in ["red", "green", "yellow", "blue", "white", "pink", "purple", "orange", "black", "brown", "lavender"]]
 
     for i in range(1):
         idexs = get_random_int(min=0, max=n_captions_test-1, number=batch_size)
@@ -942,7 +926,8 @@ if __name__ == '__main__':
     elif args.train_step == "translation_interact":
         main_translation_interact()
 
-
+    elif args.train_step == "translation_im2im":
+        main_translation_2images()
 
 
 
