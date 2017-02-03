@@ -157,7 +157,7 @@ def cnn_encoder(inputs, is_train, reuse, name="cnn"):
     b_init = None
     gamma_init = tf.random_normal_initializer(1., 0.02)
     with tf.variable_scope(name, reuse=reuse):
-        tl.layers.set_name_reuse(reuse)
+        tl.layers.set_name_reuse(True)
 
         net_in = InputLayer(inputs, name='p/in')
         net_h0 = Conv2d(net_in, df_dim, (5, 5), (2, 2), act=lambda x: tl.act.lrelu(x, 0.2),
@@ -188,7 +188,7 @@ def cnn_encoder(inputs, is_train, reuse, name="cnn"):
             net_h3 = DropoutLayer(net_h3, keep=0.8, is_fix=True, name='p/h3/drop')
 
         net_h4 = FlattenLayer(net_h3, name='p/h4/flatten')
-        net_h4 = DenseLayer(net_h4, n_units=(t_dim if name=="cnn" else z_dim),
+        net_h4 = DenseLayer(net_h4, n_units=(t_dim if name in ["cnn", "rnn2cnn"] else z_dim),
                 act=tf.identity,
                 W_init = w_init,
                 b_init = None,
