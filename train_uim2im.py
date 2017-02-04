@@ -303,14 +303,14 @@ def main_train_imageEncoder():
     # E_256,         2000: 0.87 6000: 0.8 10000: 0.77 13172: 0.76
     # E_256, resid   57720: 0.72
     is_stackGAN = True     # use stackGAN and use E with 256x256x3 input
-    is_weighted_loss = True # use weighted loss
+    is_weighted_loss = False # use weighted loss
 
     if is_stackGAN:
         stackG = model.stackG_256
         stackD = model.stackD_256
         # cnn_encoder = model.cnn_encoder_256     # if 256 input
-        # cnn_encoder = model.cnn_encoder         # if 64 input
-        cnn_encoder = model.cnn_encoder_resnet
+        cnn_encoder = model.cnn_encoder         # if 64 input
+        # cnn_encoder = model.cnn_encoder_resnet
     else:
         cnn_encoder = model.cnn_encoder
 
@@ -627,12 +627,12 @@ def main_translation():
         #                                 t_z : b_z,                                                  # use fake image
         #                                 t_caption : b_caption,                                      # use fake image
         #                                 })                                                          # use fake image
-        # if is_stackGAN:
-        #     b_images = threading_data(b_images, imresize, size=[64, 64], interp='bilinear')
-        #     b_images = threading_data(b_images, prepro_img, mode='translation')
+        # if is_stackGAN:                                                                             # use fake image
+        #     b_images = threading_data(b_images, imresize, size=[64, 64], interp='bilinear')         # use fake image
+        #     b_images = threading_data(b_images, prepro_img, mode='translation')                     # use fake image
 
-        # sample_sentence = change_id(b_caption, color_ids, vocab.word_to_id("yellow"))
-        sample_sentence = b_caption                                               # reconstruct from same sentences, test performance of reconstruction
+        sample_sentence = change_id(b_caption, color_ids, vocab.word_to_id("yellow"))
+        # sample_sentence = b_caption                                               # reconstruct from same sentences, test performance of reconstruction
         for idx, caption in enumerate(b_caption):
             print("%d-%d: source: %s" % (i, idx, [vocab.id_to_word(word) for word in caption]))
             print("%d-%d: target: %s" % (i, idx, [vocab.id_to_word(word) for word in sample_sentence[idx]]))
@@ -667,7 +667,6 @@ def main_translation():
         #                                 })
         # save_images(gen_img2, [8, 8], 'samples/step3/debug_{:02d}.png'.format(i))
         print("Translate completed {}".format(i))
-
 
 # def main_translation_interact():
 #     is_stackGAN = True # use stackGAN and use E with 256x256x3 input, otherwise, 64x64x3 as input
@@ -821,26 +820,18 @@ def main_train_rnn2cnn():
 
     # load the latest checkpoints
     save_dir = "checkpoint"
-    # os.system("mkdir checkpoint/step2")
-    os.system("mkdir samples/step2")
+    # os.system("mkdir samples/step2")
     net_e_name = os.path.join(save_dir, 'net_e.npz')
-
-    if not os.path.exists(net_e_name):
-        print("[!] Loading RNN checkpoint failed!")
-    else:
-        net_e_loaded_params = tl.files.load_npz(name=net_e_name)
-        tl.files.assign_params(sess, net_e_loaded_params, net_rnn)
-        print("[*] Loading RNN checkpoint SUCCESS!")
+    net_e_loaded_params = tl.files.load_npz(name=net_e_name)
+    tl.files.assign_params(sess, net_e_loaded_params, net_rnn)
 
     net_rnn2cnn_name = os.path.join(save_dir, 'net_rnn2cnn.npz')
-
     if not os.path.exists(net_rnn2cnn_name):
         print("[!] Loading RNN2CNN checkpoint failed!")
     else:
         params = tl.files.load_npz(name=net_rnn2cnn_name)
         tl.files.assign_params(sess, params, net_c)
         print("[*] Loading RNN2CNN checkpoint SUCCESS!")
-
 
     n_epoch = 600
     print_freq = 1
@@ -882,8 +873,6 @@ def main_train_rnn2cnn():
         if (epoch != 0) and (epoch % 5) == 0:
             tl.files.save_npz(net_c.all_params, name=net_rnn2cnn_name, sess=sess)
             print("[*] Saving CNN checkpoints SUCCESS!")
-
-
 
 def main_translation_2images():
     is_stackGAN = True # use stackGAN and use E with 256x256x3 input, otherwise, 64x64x3 as input
@@ -974,7 +963,7 @@ def main_translation_2images():
 
         idexs = get_random_int(min=0, max=n_captions_test-1, number=batch_size)
         b_images_2 = images_test[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')]
-        b_images_2 = threading_data(b_images_2, prepro_img, mode='translation') 
+        b_images_2 = threading_data(b_images_2, prepro_img, mode='translation')
         # b_images_2 = b_images # same
 
         # b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)    # use fake image
