@@ -302,8 +302,9 @@ def main_train_imageEncoder():
     # stackG deep E  1000: 0.75;
     # E_256,         2000: 0.87 6000: 0.8 10000: 0.77 13172: 0.76
     # E_256, resid   57720: 0.72
-    is_stackGAN = True     # use stackGAN and use E with 256x256x3 input
+    is_stackGAN = True       # use stackGAN and use E with 256x256x3 input
     is_weighted_loss = False # use weighted loss
+    is_pixel_mse = True      # pixel-wise mse between real and fake image
 
     if is_stackGAN:
         stackG = model.stackG_256
@@ -344,31 +345,33 @@ def main_train_imageEncoder():
             # t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'input_image')  # debug , prob of real images to be real
             # net_d, _ = discriminator_txt2img(t_image, net_rnn, is_train=False, reuse=False)                     # debug , prob of real images to be real
 
-    # net_g1, _ = generator_txt2img(net_p.outputs,    # mse of x and x_z
-    #                 net_rnn,
-    #                 is_train=False, reuse=True)
+    ## pixel mse
+    if is_pixel_mse:
+        t_real_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'real_image')
+        net_p2 = cnn_encoder(t_real_image, is_train=True, reuse=True, name="image_encoder")
+        if is_stackGAN:
+            net_g_, _ = generator_txt2img(net_p2.outputs, net_rnn, is_train=False, reuse=True)
+            net_g_, _ = stackG(net_g_.outputs, net_rnn, is_train=False, reuse=True)
+            net_g_ = DownSampling2dLayer(net_g_, size=[64, 64], is_scale=False, method=0, name='net_g_')
+        else:
+            net_g_, _ = generator_txt2img(net_p2.outputs, net_rnn, is_train=False, reuse=True)
+        loss_pixel_mse = tf.reduce_mean( tf.square( tf.sub( net_g_.outputs, t_real_image) ))
 
     # for evaluation
     if is_stackGAN:
         net_g2, _ = generator_txt2img(net_p.outputs,    # for evaluation, generate from P
-                        net_rnn,
-                        is_train=False, reuse=True)
+                        net_rnn, is_train=False, reuse=True)
         net_g2, _ = stackG(net_g2.outputs,
-                        net_rnn,
-                        is_train=False, reuse=True)
+                        net_rnn, is_train=False, reuse=True)
         net_g3, _ = generator_txt2img(t_z,              # for evaluation, generate from z
-                        net_rnn,
-                        is_train=False, reuse=True)
+                        net_rnn, is_train=False, reuse=True)
         net_g3, _ = stackG(net_g3.outputs,
-                        net_rnn,
-                        is_train=False, reuse=True)
+                        net_rnn, is_train=False, reuse=True)
     else:
         net_g2, _ = generator_txt2img(net_p.outputs,    # for evaluation, generate from P
-                        net_rnn,
-                        is_train=False, reuse=True)
+                        net_rnn, is_train=False, reuse=True)
         net_g3, _ = generator_txt2img(t_z,              # for evaluation, generate from z
-                        net_rnn,
-                        is_train=False, reuse=True)
+                        net_rnn, is_train=False, reuse=True)
 
     lr = 0.0002
     lr_decay = 0.5
@@ -379,9 +382,14 @@ def main_train_imageEncoder():
 
     train_vars = tl.layers.get_variables_with_name('image_encoder', True, True)
     if is_weighted_loss:
-        loss = tf.reduce_mean( tf.square( tf.sub( net_p.outputs, t_z) ) * net_d.outputs ) * 10
+        loss_z = tf.reduce_mean( tf.square( tf.sub( net_p.outputs, t_z) ) * net_d.outputs ) * 10
     else:
-        loss = tf.reduce_mean( tf.square( tf.sub( net_p.outputs, t_z) ))
+        loss_z = tf.reduce_mean( tf.square( tf.sub( net_p.outputs, t_z) ))
+
+    if is_pixel_mse:
+        loss = loss_z * 0.05 + loss_pixel_mse * 0.95
+    else:
+        loss = loss_z
 
     with tf.variable_scope('learning_rate'):
         lr_v = tf.Variable(lr, trainable=False)
@@ -456,16 +464,19 @@ def main_train_imageEncoder():
         b_caption = captions_ids_train[idexs]
         b_caption = tl.prepro.pad_sequences(b_caption, padding='post')
 
-        # b_images = images_train[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')] #
-        # b_real_images = threading_data(b_real_images, prepro_img, mode='rescale')
+        if is_pixel_mse:
+            b_images = images_train[np.floor(np.asarray(idexs).astype('float')/n_captions_per_image).astype('int')] #
+            b_images = threading_data(b_images, prepro_img, mode='train')
 
         b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
 
         ## train
-        _, err = sess.run([train_op, loss], feed_dict={
-                                    t_caption : b_caption,
-                                    t_z : b_z,
-                                        })
+        if is_pixel_mse:
+            _, err, err2 = sess.run([train_op, loss_z, loss_pixel_mse], feed_dict={
+                        t_caption : b_caption, t_z : b_z, t_real_image : b_images})
+        else:
+            _, err = sess.run([train_op, loss], feed_dict={
+                        t_caption : b_caption, t_z : b_z,})
 
         ## debug probability of fake image to be real
         # _, err, im, p = sess.run([train_op, loss, net_g.outputs, net_d.outputs], feed_dict={ # debug
@@ -501,7 +512,10 @@ def main_train_imageEncoder():
         # combine_and_save_image_sets([b_images, gen_images], 'samples/step2')
         # exit()
 
-        print("step[{}/{}] loss:{}".format(step, n_step, err))
+        if is_pixel_mse:
+            print("step[{}/{}] loss_z:{} loss_pixel_mse:{}".format(step, n_step, err, err2))
+        else:
+            print("step[{}/{}] loss:{}".format(step, n_step, err))
 
         if (step != 0) and (step % 1000) == 0:
             b_images = sess.run(net_g3.outputs, feed_dict={
@@ -631,8 +645,8 @@ def main_translation():
         #     b_images = threading_data(b_images, imresize, size=[64, 64], interp='bilinear')         # use fake image
         #     b_images = threading_data(b_images, prepro_img, mode='translation')                     # use fake image
 
-        sample_sentence = change_id(b_caption, color_ids, vocab.word_to_id("yellow"))
-        # sample_sentence = b_caption                                               # reconstruct from same sentences, test performance of reconstruction
+        # sample_sentence = change_id(b_caption, color_ids, vocab.word_to_id("yellow"))
+        sample_sentence = b_caption                                               # reconstruct from same sentences, test performance of reconstruction
         for idx, caption in enumerate(b_caption):
             print("%d-%d: source: %s" % (i, idx, [vocab.id_to_word(word) for word in caption]))
             print("%d-%d: target: %s" % (i, idx, [vocab.id_to_word(word) for word in sample_sentence[idx]]))
