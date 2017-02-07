@@ -403,6 +403,10 @@ def cnn_encoder_resnet(input_images, is_train=True, reuse=False, name='cnn'):
             name='p/h4/embed')
         # logits = net_h4.outputs
         # net_h4.outputs = tf.nn.sigmoid(net_h4.outputs)
+        # if name == 'image_encoder':
+        #     print("Force image_encoder output to be gaussian distribution ...")
+        #     mean, var = tf.nn.moments(net_h4.outputs, axes=[1])
+        #     net_h4.outputs = (net_h4.outputs - mean) / tf.sqrt(var)
     return net_h4
 
 ## stack GAN ===================================================================

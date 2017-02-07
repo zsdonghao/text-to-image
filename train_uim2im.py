@@ -303,20 +303,20 @@ def main_train_imageEncoder():
     # E_256,         2000: 0.87 6000: 0.8 10000: 0.77 13172: 0.76
     # E_256, resid   57720: 0.72
     is_stackGAN = True       # use stackGAN and use E with 256x256x3 input
-    is_weighted_loss = False # use weighted loss
+    is_weighted_loss = False # use weighted loss on z MSE
+    is_weighted_loss2 = True # use weighted loss on pixel MSE
     is_pixel_mse = True      # pixel-wise mse between real and fake image
 
     if is_stackGAN:
         stackG = model.stackG_256
         stackD = model.stackD_256
         # cnn_encoder = model.cnn_encoder_256     # if 256 input
-        cnn_encoder = model.cnn_encoder         # if 64 input
-        # cnn_encoder = model.cnn_encoder_resnet
+        # cnn_encoder = model.cnn_encoder         # if 64 input
+        cnn_encoder = model.cnn_encoder_resnet    # if 64 input
     else:
         cnn_encoder = model.cnn_encoder
 
     generator_txt2img = model.generator_txt2img
-    cnn_encoder = model.cnn_encoder
     rnn_embed = model.rnn_embed
     discriminator_txt2img = model.discriminator_txt2img
 
@@ -335,15 +335,18 @@ def main_train_imageEncoder():
         if is_weighted_loss:
             ## use weighted loss
             net_d, _ = stackD(net_gII.outputs, net_rnn, is_train=False, reuse=False)
-            # t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'input_image')                  # debug , prob of real images to be real
-            # net_d, _ = stackD(tf.image.resize_images(t_image, size=[256, 256], method=0), net_rnn, is_train=False, reuse=False) # debug , prob of real images to be real
+        # if is_weighted_loss2:
+        #     t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'input_image')                  # debug , prob of real images to be real
+        #     net_d2, _ = stackD(tf.image.resize_images(t_image, size=[256, 256], method=0), net_rnn, is_train=False, reuse=False) # debug , prob of real images to be real
     else:
         net_p = cnn_encoder(net_g.outputs, is_train=True, reuse=False, name="image_encoder")
         ## use weighted loss
         if is_weighted_loss:
             net_d, _ = discriminator_txt2img(net_g.outputs, net_rnn, is_train=False, reuse=False)
-            # t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'input_image')  # debug , prob of real images to be real
-            # net_d, _ = discriminator_txt2img(t_image, net_rnn, is_train=False, reuse=False)                     # debug , prob of real images to be real
+
+        # if is_weighted_loss2:
+        #     t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'input_image')  # debug , prob of real images to be real
+        #     net_d2, _ = discriminator_txt2img(t_image, net_rnn, is_train=False, reuse=False)                     # debug , prob of real images to be real
 
     ## pixel mse
     if is_pixel_mse:
@@ -355,7 +358,13 @@ def main_train_imageEncoder():
             net_g_ = DownSampling2dLayer(net_g_, size=[64, 64], is_scale=False, method=0, name='net_g_')
         else:
             net_g_, _ = generator_txt2img(net_p2.outputs, net_rnn, is_train=False, reuse=True)
-        loss_pixel_mse = tf.reduce_mean( tf.square( tf.sub( net_g_.outputs, t_real_image) ))
+
+        if is_weighted_loss2:
+                    # t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'input_image')                  # debug , prob of real images to be real
+            net_d2, _ = discriminator_txt2img(t_real_image, net_rnn, is_train=False, reuse=False)
+            loss_pixel_mse = tf.reduce_mean( tf.square( tf.sub( net_g_.outputs, t_real_image) * (1 - net_d2.outputs) )) * 10
+        else:
+            loss_pixel_mse = tf.reduce_mean( tf.square( tf.sub( net_g_.outputs, t_real_image) ))
 
     # for evaluation
     if is_stackGAN:
@@ -387,7 +396,7 @@ def main_train_imageEncoder():
         loss_z = tf.reduce_mean( tf.square( tf.sub( net_p.outputs, t_z) ))
 
     if is_pixel_mse:
-        loss = loss_z * 0.05 + loss_pixel_mse * 0.95
+        loss = loss_z * 0.5 + loss_pixel_mse * 0.5
     else:
         loss = loss_z
 
@@ -448,6 +457,15 @@ def main_train_imageEncoder():
             tl.files.assign_params(sess, net_d_loaded_params, net_d)
             print("[*] Loading D or D II checkpoint SUCCESS!")
 
+    if is_weighted_loss2:
+        net_d_name = os.path.join(save_dir, 'net_d.npz')
+        if not os.path.exists(net_d_name):
+            print("[!] Loading D checkpoint failed!")
+        else:
+            net_d_loaded_params = tl.files.load_npz(name=net_d_name)
+            tl.files.assign_params(sess, net_d_loaded_params, net_d2)
+            print("[*] Loading D checkpoint SUCCESS!")
+
     for step in range(n_step):
         ## decay lr
         if step !=0 and (step % decay_every == 0):
@@ -469,6 +487,7 @@ def main_train_imageEncoder():
             b_images = threading_data(b_images, prepro_img, mode='train')
 
         b_z = np.random.normal(loc=0.0, scale=1.0, size=(sample_size, z_dim)).astype(np.float32)
+        # b_z = (b_z - np.mean(b_z, 1, keepdims=True))/np.std(b_z,1, keepdims=True)
 
         ## train
         if is_pixel_mse:
@@ -557,15 +576,17 @@ def main_translation():
         cnn_encoder = model.cnn_encoder
 
     generator_txt2img = model.generator_txt2img
-    cnn_encoder = model.cnn_encoder
     rnn_embed = model.rnn_embed
 
-    t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name = 'input_image')
+    t_image = tf.placeholder('float32', [batch_size, image_size, image_size, 3], name='input_image')
     t_caption = tf.placeholder(dtype=tf.int64, shape=[batch_size, None], name='input_caption')
 
     net_p = cnn_encoder(t_image, is_train=False, reuse=False, name="image_encoder")
+    ## normalize the z
+    # mean, var = tf.nn.moments(net_p.outputs, axes=[0])
+    # net_p.outputs = (net_p.outputs - mean) / tf.sqrt(var)
     net_rnn = rnn_embed(t_caption, is_train=False, reuse=False, return_embed=False)
-    net_g, _ = generator_txt2img(net_p.outputs, # image --> image
+    net_g, _ = generator_txt2img(net_p.outputs,
                     net_rnn, is_train=False, reuse=False)
 
     if is_stackGAN:
@@ -577,9 +598,7 @@ def main_translation():
                     net_rnn,
                     is_train=False, reuse=True)        # debug
     if is_stackGAN:
-        net_g2, _ = stackG(net_g2.outputs,
-                        net_rnn,
-                        is_train=False, reuse=True)
+        net_g2, _ = stackG(net_g2.outputs, net_rnn, is_train=False, reuse=True)
 
     sess = tf.Session()
     tl.layers.initialize_global_variables(sess)

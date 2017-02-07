@@ -255,7 +255,8 @@ for epoch in range(n_epoch+1):
         #     print(i, " ".join([vocab.id_to_word(id) for id in seq]))
         # save_images(b_real_images, [8, 8], 'real_image.png')
         # exit()
-
+        b_real_images = threading_data(b_real_images, prepro_img, mode='train')   # [0, 255] --> [-1, 1]
+        b_wrong_images = threading_data(b_wrong_images, prepro_img, mode='train')
         ## updates text-to-image mapping
         if epoch < 50:
             errE, _ = sess.run([e_loss, e_optim], feed_dict={
@@ -270,8 +271,6 @@ for epoch in range(n_epoch+1):
             errE = 0
 
         ## updates D
-        b_real_images = threading_data(b_real_images, prepro_img, mode='train')   # [0, 255] --> [-1, 1]
-        b_wrong_images = threading_data(b_wrong_images, prepro_img, mode='train')
         errD, _ = sess.run([d_loss, d_optim], feed_dict={
                         t_real_image : b_real_images,
                         t_wrong_image : b_wrong_images,     # remove if DCGAN only
