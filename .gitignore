@@ -4,7 +4,6 @@ cub_birds_200_2011/*
 samples/main*
 backup/
 *.txt
-*.png
 *.pdf
 *.pyc
 .DS_Store
