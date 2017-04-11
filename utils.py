@@ -10,6 +10,19 @@ import string
 """ The functions here will be merged into TensorLayer after finishing this project.
 """
 
+def load_and_assign_npz(sess=None, name="", model=None):
+    assert model is not None
+    assert sess is not None
+    if not os.path.exists(name):
+        print("[!] Loading {} model failed!".format(name))
+        return False
+    else:
+        params = tl.files.load_npz(name=name)
+        tl.files.assign_params(sess, params, model)
+        print("[*] Loading {} model SUCCESS!".format(name))
+        return model
+
+
 #files
 def load_folder_list(path=""):
     """Return a folder list in a folder by given a folder path.

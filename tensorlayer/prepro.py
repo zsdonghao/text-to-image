@@ -290,7 +290,7 @@ def flip_axis(x, axis, is_random=False):
         - 1, flip left and right
         - 2, flip channel
     is_random : boolean, default False
-        If True, randomly zoom.
+        If True, randomly flip.
     """
     if is_random:
         factor = np.random.uniform(-1, 1)
@@ -1015,7 +1015,7 @@ def channel_shift_multi(x, intensity, channel_index=2):
     return np.asarray(results)
 
 # noise
-def drop(x, keep=0.5): 
+def drop(x, keep=0.5):
     """Randomly set some pixels to zero by a given keeping probability.
 
     Parameters
@@ -1209,8 +1209,7 @@ def array_to_img(x, dim_ordering=(0,1,2), scale=True):
 
 
 ## Sequence
-def pad_sequences(sequences, maxlen=None, dtype='int32',
-                  padding='post', truncating='pre', value=0.):
+def pad_sequences(sequences, maxlen=None, dtype='int32', padding='post', truncating='pre', value=0.):
     """Pads each sequence to the same length:
     the length of the longest sequence.
     If maxlen is provided, any sequence longer
@@ -1424,7 +1423,13 @@ def distorted_images(images=None, height=24, width=24):
     -----------
     - `tensorflow.models.image.cifar10.cifar10_input <https://github.com/tensorflow/tensorflow/blob/r0.9/tensorflow/models/image/cifar10/cifar10_input.py>`_
     """
-    print(" [Warning] distorted_images will be deprecated due to speed, see TFRecord tutorial for more info...")
+    print("This function is deprecated, please use tf.map_fn instead, e.g:\n   \
+            t_image = tf.map_fn(lambda img: tf.image.random_brightness(img, max_delta=32. / 255.), t_image)\n \
+            t_image = tf.map_fn(lambda img: tf.image.random_contrast(img, lower=0.5, upper=1.5), t_image)\n \
+            t_image = tf.map_fn(lambda img: tf.image.random_saturation(img, lower=0.5, upper=1.5), t_image)\n \
+            t_image = tf.map_fn(lambda img: tf.image.random_hue(img, max_delta=0.032), t_image)")
+    exit()
+    # print(" [Warning] distorted_images will be deprecated due to speed, see TFRecord tutorial for more info...")
     try:
         batch_size = int(images._shape[0])
     except:
@@ -1495,7 +1500,13 @@ def crop_central_whiten_images(images=None, height=24, width=24):
     ----------------
     - ``tensorflow.models.image.cifar10.cifar10_input``
     """
-    print(" [Warning] crop_central_whiten_images will be deprecated due to speed, see TFRecord tutorial for more info...")
+    print("This function is deprecated, please use tf.map_fn instead, e.g:\n   \
+            t_image = tf.map_fn(lambda img: tf.image.random_brightness(img, max_delta=32. / 255.), t_image)\n \
+            t_image = tf.map_fn(lambda img: tf.image.random_contrast(img, lower=0.5, upper=1.5), t_image)\n \
+            t_image = tf.map_fn(lambda img: tf.image.random_saturation(img, lower=0.5, upper=1.5), t_image)\n \
+            t_image = tf.map_fn(lambda img: tf.image.random_hue(img, max_delta=0.032), t_image)")
+    exit()
+    # print(" [Warning] crop_central_whiten_images will be deprecated due to speed, see TFRecord tutorial for more info...")
     try:
         batch_size = int(images._shape[0])
     except:

@@ -148,14 +148,22 @@ def sample_top(a=[], top_k=10):
     top_k : int
         Number of candidates to be considered.
     """
-    a = np.array(a)
-    idx = np.argsort(a)[::-1]
-    idx = idx[:top_k]
-    # a = a[idx]
+    idx = np.argpartition(a, -top_k)[-top_k:]
     probs = a[idx]
+    # print("new", probs)
     probs = probs / np.sum(probs)
     choice = np.random.choice(idx, p=probs)
     return choice
+    ## old implementation
+    # a = np.array(a)
+    # idx = np.argsort(a)[::-1]
+    # idx = idx[:top_k]
+    # # a = a[idx]
+    # probs = a[idx]
+    # print("prev", probs)
+    # # probs = probs / np.sum(probs)
+    # # choice = np.random.choice(idx, p=probs)
+    # # return choice
 
 
 ## Vector representations of words (Advanced)  UNDOCUMENT
@@ -202,6 +210,7 @@ class Vocabulary(object):
   start_id : int of start id
   end_id : int of end id
   unk_id : int of unk id
+  pad_id : int of padding id
 
   Vocab_files
   -------------
@@ -223,7 +232,8 @@ class Vocabulary(object):
                vocab_file,
                start_word="<S>",
                end_word="</S>",
-               unk_word="<UNK>"):
+               unk_word="<UNK>",
+               pad_word="<PAD>"):
     if not tf.gfile.Exists(vocab_file):
       tf.logging.fatal("Vocab file %s not found.", vocab_file)
     tf.logging.info("Initializing vocabulary from file: %s", vocab_file)
@@ -237,7 +247,7 @@ class Vocabulary(object):
       reverse_vocab.append(unk_word)
     vocab = dict([(x, y) for (y, x) in enumerate(reverse_vocab)])
 
-    print("  tensorlayer.nlp:Instantiate Vocabulary from %s : %s %s %s" % (vocab_file, start_word, end_word, unk_word))
+    print("  [TL] Vocabulary from %s : %s %s %s" % (vocab_file, start_word, end_word, unk_word))
     print("    vocabulary with %d words (includes start_word, end_word, unk_word)" % len(vocab))
     # tf.logging.info("     vocabulary with %d words" % len(vocab))
 
@@ -248,9 +258,11 @@ class Vocabulary(object):
     self.start_id = vocab[start_word]
     self.end_id = vocab[end_word]
     self.unk_id = vocab[unk_word]
+    self.pad_id = vocab[pad_word]
     print("      start_id: %d" % self.start_id)
     print("      end_id: %d" % self.end_id)
     print("      unk_id: %d" % self.unk_id)
+    print("      pad_id: %d" % self.pad_id)
 
   def word_to_id(self, word):
     """Returns the integer word id of a word string."""
@@ -316,11 +328,11 @@ def create_vocab(sentences, word_counts_output_file, min_word_count=1):
 
     Returns
     --------
-    tl.nlp.SimpleVocabulary object.
+    - tl.nlp.SimpleVocabulary object.
 
     Mores
     -----
-    tl.nlp.build_vocab()
+    - ``tl.nlp.build_vocab()``
 
     Examples
     --------
@@ -333,16 +345,16 @@ def create_vocab(sentences, word_counts_output_file, min_word_count=1):
     ...[['<S>', 'one', 'two', ',', 'three', '</S>'], ['<S>', 'four', 'five', 'five', '</S>']]
 
     >>> tl.nlp.create_vocab(processed_capts, word_counts_output_file='vocab.txt', min_word_count=1)
-    ...   tensorlayer.nlp:Creating vocabulary.
+    ...   [TL] Creating vocabulary.
     ...   Total words: 8
     ...   Words in vocabulary: 8
     ...   Wrote vocabulary file: vocab.txt
     >>> vocab = tl.nlp.Vocabulary('vocab.txt', start_word="<S>", end_word="</S>", unk_word="<UNK>")
-    ...   tensorlayer.nlp:Instantiate Vocabulary from vocab.txt : <S> </S> <UNK>
+    ...   [TL] Instantiate Vocabulary from vocab.txt : <S> </S> <UNK>
     ...   vocabulary with 9 words (includes unk_word)
     """
     from collections import Counter
-    print("  tensorlayer.nlp:Creating vocabulary.")
+    print("  [TL] Creating vocabulary.")
     counter = Counter()
     for c in sentences:
         counter.update(c)
@@ -352,9 +364,8 @@ def create_vocab(sentences, word_counts_output_file, min_word_count=1):
     # Filter uncommon words and sort by descending count.
     word_counts = [x for x in counter.items() if x[1] >= min_word_count]
     word_counts.sort(key=lambda x: x[1], reverse=True)
-
     word_counts = [("<PAD>", 0)] + word_counts # 1st id should be reserved for padding
-
+    # print(word_counts)
     print("    Words in vocabulary: %d" % len(word_counts))
 
     # Write out the word counts file.
@@ -389,8 +400,7 @@ def simple_read_words(filename="nietzsche.txt"):
         return words
 
 def read_words(filename="nietzsche.txt", replace = ['\n', '<eos>']):
-    """File to list format context.
-    Note that, this script can not handle punctuations.
+    """File to list format context. Note that, this script can not handle punctuations.
     For customized read_words method, see ``tutorial_generate_text.py``.
 
     Parameters
@@ -402,15 +412,21 @@ def read_words(filename="nietzsche.txt", replace = ['\n', '<eos>']):
 
     Returns
     --------
-    The context in a list, split by ' ' by default, and use '<eos>' to represent '\n'.
-    e.g. [... 'how', 'useful', 'it', "'s" ... ]
+    The context in a list, split by space by default, and use ``'<eos>'`` to represent ``'\n'``,
+    e.g. ``[... 'how', 'useful', 'it', "'s" ... ]``.
 
     Code References
     ---------------
     - `tensorflow.models.rnn.ptb.reader <https://github.com/tensorflow/tensorflow/tree/master/tensorflow/models/rnn/ptb>`_
     """
     with tf.gfile.GFile(filename, "r") as f:
-        return f.read().replace(*replace).split()
+        try:    # python 3.4 or older
+            context_list = f.read().replace(*replace).split()
+        except: # python 3.5
+            f.seek(0)
+            replace = [x.encode('utf-8') for x in replace]
+            context_list = f.read().replace(*replace).split()
+        return context_list
 
 def read_analogies_file(eval_file='questions-words.txt', word2id={}):
     """Reads through an analogy question file, return its id format.
@@ -558,7 +574,6 @@ def build_words_dataset(words=[], vocabulary_size=50000, printable=True, unk_key
         word_to_id, mapping words to unique IDs.
     reverse_dictionary : a dictionary
         id_to_word, mapping id to unique word.
-
 
     Examples
     --------
@@ -740,6 +755,7 @@ def basic_tokenizer(sentence, _WORD_SPLIT=re.compile(b"([.,!?\"':;)(])")):
   - Code from ``/tensorflow/models/rnn/translation/data_utils.py``
   """
   words = []
+  sentence = tf.compat.as_bytes(sentence)
   for space_separated_fragment in sentence.strip().split():
     words.extend(re.split(_WORD_SPLIT, space_separated_fragment))
   return [w for w in words if w]
@@ -836,7 +852,7 @@ def initialize_vocabulary(vocabulary_path):
     rev_vocab = []
     with gfile.GFile(vocabulary_path, mode="rb") as f:
       rev_vocab.extend(f.readlines())
-    rev_vocab = [line.strip() for line in rev_vocab]
+    rev_vocab = [tf.compat.as_bytes(line.strip()) for line in rev_vocab]
     vocab = dict([(x, y) for (y, x) in enumerate(rev_vocab)])
     return vocab, rev_vocab
   else:

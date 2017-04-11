@@ -9,9 +9,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import standard_ops
 
 ## Cost Functions
-def cross_entropy(output, target, name="cross_entropy_loss"):
-    """Returns the TensorFlow expression of cross-entropy of two distributions, implement
-    softmax internally.
+
+def cross_entropy(output, target, name=None):
+    """It is a softmax cross-entropy operation, returns the TensorFlow expression of cross-entropy of two distributions, implement
+    softmax internally. See ``tf.nn.sparse_softmax_cross_entropy_with_logits``.
 
     Parameters
     ----------
@@ -19,23 +20,31 @@ def cross_entropy(output, target, name="cross_entropy_loss"):
         A distribution with shape: [batch_size, n_feature].
     target : Tensorflow variable
         A batch of index with shape: [batch_size, ].
+    name : string
+        Name of this loss.
 
     Examples
     --------
-    >>> ce = tl.cost.cross_entropy(y_logits, y_target_logits)
+    >>> ce = tl.cost.cross_entropy(y_logits, y_target_logits, 'my_loss')
 
     References
     -----------
     - About cross-entropy: `wiki <https://en.wikipedia.org/wiki/Cross_entropy>`_.\n
     - The code is borrowed from: `here <https://en.wikipedia.org/wiki/Cross_entropy>`_.
     """
-    with tf.name_scope(name):
-        # net_output_tf = output
-        # target_tf = target
-        # cross_entropy = tf.add(tf.mul(tf.log(net_output_tf, name=None),target_tf),
-        #                      tf.mul(tf.log(1 - net_output_tf), (1 - target_tf)))
-        # return -1 * tf.reduce_mean(tf.reduce_sum(cross_entropy, 1), name='cross_entropy_mean')
-        return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(output, target))
+    try: # old
+        return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=output, targets=target))
+    except: # TF 1.0
+        assert name is not None, "Please give a unique name to tl.cost.cross_entropy for TF1.0+"
+        return tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=target, logits=output, name=name))
+
+def sigmoid_cross_entropy(output, target, name=None):
+    """It is a sigmoid cross-entropy operation, see ``tf.nn.sigmoid_cross_entropy_with_logits``.
+    """
+    try: # TF 1.0
+        return tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output, name=name))
+    except:
+        return tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=output, targets=target))
 
 
 def binary_cross_entropy(output, target, epsilon=1e-8, name='bce_loss'):
@@ -67,19 +76,30 @@ def binary_cross_entropy(output, target, epsilon=1e-8, name='bce_loss'):
                               (1. - target) * tf.log(1. - output + epsilon)))
 
 
-def mean_squared_error(output, target):
+def mean_squared_error(output, target, is_mean=False):
     """Return the TensorFlow expression of mean-squre-error of two distributions.
 
     Parameters
     ----------
-    output : tensorflow variable
-        A distribution with shape: [batch_size, n_feature].
-    target : tensorflow variable
-        A distribution with shape: [batch_size, n_feature].
+    output : 2D or 4D tensor.
+    target : 2D or 4D tensor.
+    is_mean : boolean, if True, use ``tf.reduce_mean`` to compute the loss of one data, otherwise, use ``tf.reduce_sum`` (default).
+
+    References
+    ------------
+    - `Wiki Mean Squared Error <https://en.wikipedia.org/wiki/Mean_squared_error>`_
     """
     with tf.name_scope("mean_squared_error_loss"):
-        mse = tf.reduce_mean(tf.reduce_sum(tf.squared_difference(output, target),
-                                           reduction_indices = 1))
+        if output.get_shape().ndims == 2:   # [batch_size, n_feature]
+            if is_mean:
+                mse = tf.reduce_mean(tf.reduce_mean(tf.squared_difference(output, target), 1))
+            else:
+                mse = tf.reduce_mean(tf.reduce_sum(tf.squared_difference(output, target), 1))
+        elif output.get_shape().ndims == 4: # [batch_size, w, h, c]
+            if is_mean:
+                mse = tf.reduce_mean(tf.reduce_mean(tf.squared_difference(output, target), [1, 2, 3]))
+            else:
+                mse = tf.reduce_mean(tf.reduce_sum(tf.squared_difference(output, target), [1, 2, 3]))
         return mse
 
 
@@ -185,7 +205,7 @@ def iou_coe(output, target, threshold=0.5, epsilon=1e-10):
     return tf.reduce_sum(intersection) / (tf.reduce_sum(union) + epsilon)
 
 
-def cross_entropy_seq(logits, target_seqs, batch_size=1, num_steps=None):
+def cross_entropy_seq(logits, target_seqs, batch_size=None):#, batch_size=1, num_steps=None):
     """Returns the expression of cross-entropy of two sequences, implement
     softmax internally. Normally be used for Fixed Length RNN outputs.
 
@@ -195,27 +215,33 @@ def cross_entropy_seq(logits, target_seqs, batch_size=1, num_steps=None):
         2D tensor, ``network.outputs``, [batch_size*n_steps (n_examples), number of output units]
     target_seqs : Tensorflow variable
         target : 2D tensor [batch_size, n_steps], if the number of step is dynamic, please use ``cross_entropy_seq_with_mask`` instead.
-    batch_size : a int, default is 1
-        RNN batch_size, number of concurrent processes, divide the loss by batch_size.
-    num_steps : a int
-        sequence length
+    batch_size : None or int.
+        If not None, the return cost will be divided by batch_size.
 
     Examples
     --------
     >>> see PTB tutorial for more details
     >>> input_data = tf.placeholder(tf.int32, [batch_size, num_steps])
     >>> targets = tf.placeholder(tf.int32, [batch_size, num_steps])
-    >>> cost = tf.cost.cross_entropy_seq(network.outputs, targets, batch_size, num_steps)
+    >>> cost = tf.cost.cross_entropy_seq(network.outputs, targets)
     """
-    loss = tf.nn.seq2seq.sequence_loss_by_example(
+    try: # TF 1.0
+        sequence_loss_by_example_fn = tf.contrib.legacy_seq2seq.sequence_loss_by_example
+    except:
+        sequence_loss_by_example_fn = tf.nn.seq2seq.sequence_loss_by_example
+
+    loss = sequence_loss_by_example_fn(
         [logits],
         [tf.reshape(target_seqs, [-1])],
-        [tf.ones([batch_size * num_steps])])
-    cost = tf.reduce_sum(loss) / batch_size
+        [tf.ones_like(tf.reshape(target_seqs, [-1]), dtype=tf.float32)])
+        # [tf.ones([batch_size * num_steps])])
+    cost = tf.reduce_sum(loss) #/ batch_size
+    if batch_size is not None:
+        cost = cost / batch_size
     return cost
 
 
-def cross_entropy_seq_with_mask(logits, target_seqs, input_mask, return_details=False):
+def cross_entropy_seq_with_mask(logits, target_seqs, input_mask, return_details=False, name=None):
     """Returns the expression of cross-entropy of two sequences, implement
     softmax internally. Normally be used for Dynamic RNN outputs.
 
@@ -237,10 +263,17 @@ def cross_entropy_seq_with_mask(logits, target_seqs, input_mask, return_details=
     """
     targets = tf.reshape(target_seqs, [-1])   # to one vector
     weights = tf.to_float(tf.reshape(input_mask, [-1]))   # to one vector like targets
-    losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits, targets)
-    loss = tf.div(tf.reduce_sum(tf.mul(losses, weights)),   # loss from mask. reduce_sum before element-wise mul with mask !!
-                    tf.reduce_sum(weights),
-                    name="seq_loss_with_mask")
+    losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets, name=name) * weights
+    #losses = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=targets, name=name)) # for TF1.0 and others
+
+    try: ## TF1.0
+        loss = tf.divide(tf.reduce_sum(losses),   # loss from mask. reduce_sum before element-wise mul with mask !!
+                        tf.reduce_sum(weights),
+                        name="seq_loss_with_mask")
+    except: ## TF0.12
+        loss = tf.div(tf.reduce_sum(losses),   # loss from mask. reduce_sum before element-wise mul with mask !!
+                        tf.reduce_sum(weights),
+                        name="seq_loss_with_mask")
     if return_details:
         return loss, losses, weights, targets
     else:
@@ -258,8 +291,11 @@ def cosine_similarity(v1, v2):
     -----------
     a tensor of [batch_size, ]
     """
-    return tf.reduce_sum(tf.mul(v1, v2), reduction_indices=1) / (tf.sqrt(tf.reduce_sum(tf.mul(v1, v1), reduction_indices=1)) * tf.sqrt(tf.reduce_sum(tf.mul(v2, v2), reduction_indices=1)))
-
+    try: ## TF1.0
+        cost = tf.reduce_sum(tf.multiply(v1, v2), 1) / (tf.sqrt(tf.reduce_sum(tf.multiply(v1, v1), 1)) * tf.sqrt(tf.reduce_sum(tf.multiply(v2, v2), 1)))
+    except: ## TF0.12
+        cost = tf.reduce_sum(tf.mul(v1, v2), reduction_indices=1) / (tf.sqrt(tf.reduce_sum(tf.mul(v1, v1), reduction_indices=1)) * tf.sqrt(tf.reduce_sum(tf.mul(v2, v2), reduction_indices=1)))
+    return cost
 
 
 ## Regularization Functions
@@ -302,22 +338,15 @@ def li_regularizer(scale, scope=None):
 
   def li(weights, name=None):
     """Applies li regularization to weights."""
-    # with ops.op_scope([weights], name, 'li_regularizer') as scope: # tf.op_scope(values, name, default_name) is deprecated, use tf.name_scope(name, default_name, values)
-    try: # TF12
-        with ops.name_scope(scope, 'li_regularizer', [weights]) as name:
-            my_scale = ops.convert_to_tensor(scale,
+    with tf.name_scope('li_regularizer') as scope:
+        my_scale = ops.convert_to_tensor(scale,
                                            dtype=weights.dtype.base_dtype,
                                            name='scale')
-            return standard_ops.mul(
-              my_scale,
-              standard_ops.reduce_sum(standard_ops.sqrt(standard_ops.reduce_sum(tf.square(weights), 1))),
-              name=scope)
-    except: # TF11
-        with ops.op_scope([weights], name, 'li_regularizer') as scope:
-            my_scale = ops.convert_to_tensor(scale,
-                                           dtype=weights.dtype.base_dtype,
-                                           name='scale')
-            return standard_ops.mul(
+        if tf.__version__ <= '0.12':
+            standard_ops_fn = standard_ops.mul
+        else:
+            standard_ops_fn = standard_ops.multiply
+            return standard_ops_fn(
               my_scale,
               standard_ops.reduce_sum(standard_ops.sqrt(standard_ops.reduce_sum(tf.square(weights), 1))),
               name=scope)
@@ -362,26 +391,20 @@ def lo_regularizer(scale, scope=None):
       logging.info('Scale of 0 disables regularizer.')
       return lambda _, name=None: None
 
-  def lo(weights, name=None):
+  def lo(weights, name='lo_regularizer'):
     """Applies group column regularization to weights."""
-    try: # TF12
-        with ops.name_scope(scope, 'lo_regularizer', [weights]) as name:
-            my_scale = ops.convert_to_tensor(scale,
-                                           dtype=weights.dtype.base_dtype,
-                                           name='scale')
-            return standard_ops.mul(
-              my_scale,
-              standard_ops.reduce_sum(standard_ops.sqrt(standard_ops.reduce_sum(tf.square(weights), 0))),
-              name=scope)
-    except: # TF11
-        with ops.op_scope([weights], name, 'lo_regularizer') as scope:
-            my_scale = ops.convert_to_tensor(scale,
-                                           dtype=weights.dtype.base_dtype,
-                                           name='scale')
-            return standard_ops.mul(
-              my_scale,
-              standard_ops.reduce_sum(standard_ops.sqrt(standard_ops.reduce_sum(tf.square(weights), 0))),
-              name=scope)
+    with tf.name_scope(name) as scope:
+        my_scale = ops.convert_to_tensor(scale,
+                                       dtype=weights.dtype.base_dtype,
+                                       name='scale')
+        if tf.__version__ <= '0.12':
+            standard_ops_fn = standard_ops.mul
+        else:
+            standard_ops_fn = standard_ops.multiply
+        return standard_ops_fn(
+          my_scale,
+          standard_ops.reduce_sum(standard_ops.sqrt(standard_ops.reduce_sum(tf.square(weights), 0))),
+          name=scope)
   return lo
 
 def maxnorm_regularizer(scale=1.0, scope=None):
@@ -421,20 +444,17 @@ def maxnorm_regularizer(scale=1.0, scope=None):
       logging.info('Scale of 0 disables regularizer.')
       return lambda _, name=None: None
 
-  def mn(weights, name=None):
+  def mn(weights, name='max_regularizer'):
     """Applies max-norm regularization to weights."""
-    try: # TF12
-        with ops.name_scope(scope, 'maxnorm_regularizer', [weights]) as name:
+    with tf.name_scope(name) as scope:
           my_scale = ops.convert_to_tensor(scale,
                                            dtype=weights.dtype.base_dtype,
                                            name='scale')
-          return standard_ops.mul(my_scale, standard_ops.reduce_max(standard_ops.abs(weights)), name=scope)
-    except: # TF11
-        with ops.op_scope([weights], name, 'maxnorm_regularizer') as scope:
-          my_scale = ops.convert_to_tensor(scale,
-                                           dtype=weights.dtype.base_dtype,
-                                           name='scale')
-          return standard_ops.mul(my_scale, standard_ops.reduce_max(standard_ops.abs(weights)), name=scope)
+          if tf.__version__ <= '0.12':
+              standard_ops_fn = standard_ops.mul
+          else:
+              standard_ops_fn = standard_ops.multiply
+          return standard_ops_fn(my_scale, standard_ops.reduce_max(standard_ops.abs(weights)), name=scope)
   return mn
 
 def maxnorm_o_regularizer(scale, scope):
@@ -473,20 +493,17 @@ def maxnorm_o_regularizer(scale, scope):
       logging.info('Scale of 0 disables regularizer.')
       return lambda _, name=None: None
 
-  def mn_o(weights, name=None):
-    """Applies max-norm regularization to weights."""
-    try:    # TF12
-        with ops.name_scope(scope, 'maxnorm_o_regularizer', [weights]) as name:
+  def mn_o(weights, name='maxnorm_o_regularizer'):
+     """Applies max-norm regularization to weights."""
+     with tf.name_scope(name) as scope:
           my_scale = ops.convert_to_tensor(scale,
                                            dtype=weights.dtype.base_dtype,
                                                    name='scale')
-          return standard_ops.mul(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 0)), name=scope)
-    except: # TF11
-        with ops.op_scope([weights], name, 'maxnorm_o_regularizer') as scope:
-          my_scale = ops.convert_to_tensor(scale,
-                                           dtype=weights.dtype.base_dtype,
-                                                   name='scale')
-          return standard_ops.mul(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 0)), name=scope)
+          if tf.__version__ <= '0.12':
+             standard_ops_fn = standard_ops.mul
+          else:
+             standard_ops_fn = standard_ops.multiply
+          return standard_ops_fn(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 0)), name=scope)
   return mn_o
 
 def maxnorm_i_regularizer(scale, scope=None):
@@ -525,20 +542,17 @@ def maxnorm_i_regularizer(scale, scope=None):
       logging.info('Scale of 0 disables regularizer.')
       return lambda _, name=None: None
 
-  def mn_i(weights, name=None):
-    """Applies max-norm regularization to weights."""
-    try: # TF12
-        with ops.name_scope(scope, 'maxnorm_i_regularizer', [weights]) as name:
+  def mn_i(weights, name='maxnorm_i_regularizer'):
+     """Applies max-norm regularization to weights."""
+     with tf.name_scope(name) as scope:
           my_scale = ops.convert_to_tensor(scale,
                                            dtype=weights.dtype.base_dtype,
                                                    name='scale')
-          return standard_ops.mul(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 1)), name=scope)
-    except: # TF11
-        with ops.op_scope([weights], name, 'maxnorm_i_regularizer') as scope:
-          my_scale = ops.convert_to_tensor(scale,
-                                           dtype=weights.dtype.base_dtype,
-                                                   name='scale')
-          return standard_ops.mul(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 1)), name=scope)
+          if tf.__version__ <= '0.12':
+             standard_ops_fn = standard_ops.mul
+          else:
+             standard_ops_fn = standard_ops.multiply
+          return standard_ops_fn(my_scale, standard_ops.reduce_sum(standard_ops.reduce_max(standard_ops.abs(weights), 1)), name=scope)
   return mn_i
 
 
