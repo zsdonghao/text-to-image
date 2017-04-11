@@ -1,7 +1,7 @@
 # Text To Image Synthesis 
 
 
-This is an experimental tensorflow implementation of synthesizing images. The images are synthesized using the GAN-CLS Algorithm from the paper [Generative Adversarial Text-to-Image Synthesis][2]. This implementation is built on top of the excellent [DCGAN in Tensorflow][3]. The following is the model architecture. 
+This is an experimental tensorflow implementation of synthesizing images. The images are synthesized using the GAN-CLS Algorithm from the paper [Generative Adversarial Text-to-Image Synthesis][2]. This implementation is built on top of the excellent [DCGAN in Tensorflow][3].
 
 ![Model architecture](http://i.imgur.com/dNl2HkZ.jpg)
 
@@ -42,7 +42,7 @@ Image Source : [Generative Adversarial Text-to-Image Synthesis][2] Paper
 
 <a href="http://tensorlayer.readthedocs.io">
 <div align="center">
-	<img src="result.png" width="90%" height="90%"/>
+	<img src="result.png" width="70%" height="70%"/>
 </div>
 </a>
 
