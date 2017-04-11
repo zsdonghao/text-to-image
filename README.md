@@ -16,10 +16,10 @@ Image Source : [Generative Adversarial Text-to-Image Synthesis][2] Paper
 - The model is currently trained on the [flowers dataset][9]. Download the images from [here][9] and save them in ```102flowers/102flowers/*.jpg```. Also download the captions from [this link][10]. Extract the archive, copy the ```text_c10``` folder and paste it in ```102flowers/text_c10/class_*```.
 
 ## Codes
-- `train_dcgan.py` use DCGAN to generate new images.
-- `train_txt2im.py` use GAN-CLS to generate new images conditioned on text.
+- `data_loader.py` download Oxford-102 flower dataset (run this first).
+- `train_txt2im.py` train a text to image model.
 - `utils.py` helper functions.
-
+- `model.py` models.
 
 ## References
 - [Generative Adversarial Text-to-Image Synthesis][2] Paper
