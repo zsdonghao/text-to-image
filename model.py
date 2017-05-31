@@ -813,6 +813,7 @@ def rnn_embed(input_seqs, is_train=True, reuse=False, return_embed=False):
                      name = 'rnn/wordembed')
         network = DynamicRNNLayer(network,
                      cell_fn = LSTMCell,
+                     cell_init_args = {'state_is_tuple' : True, 'reuse': reuse},
                      n_hidden = rnn_hidden_size,
                      dropout = (keep_prob if is_train else None),
                      initializer = w_init,
