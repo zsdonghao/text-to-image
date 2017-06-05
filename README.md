@@ -53,7 +53,7 @@ Apache 2.0
 
 [1]:http://arxiv.org/abs/1506.06726
 [2]:http://arxiv.org/abs/1605.05396
-[3]:https://github.com/carpedm20/DCGAN-tensorflow
+[3]:https://github.com/zsdonghao/dcgan
 [4]:https://github.com/tensorflow/tensorflow
 [5]:http://www.h5py.org/
 [6]:https://github.com/Theano/Theano
