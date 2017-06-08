@@ -13,10 +13,16 @@ Image Source : [Generative Adversarial Text-to-Image Synthesis][2] Paper
 - [NLTK][8] : for tokenizer
 
 ## Datasets
-- The model is currently trained on the [flowers dataset][9]. Download the images from [here][9] and save them in ```102flowers/102flowers/*.jpg```. Also download the captions from [this link][10]. Extract the archive, copy the ```text_c10``` folder and paste it in ```102flowers/text_c10/class_*```.
+- The model is currently trained on the [flowers dataset][9]. Download the images from [here][9] and save them in ```102flowers/102flowers/*.jpg```. Also download the captions from [this link][10]. Extract the archive, copy the ```text_c10``` folder and paste it in ```102flowers/text_c10/class_*```.  
+
+**N.B**  You can downloads all data files needed manually or simply run the downloads.py and put the correct files to the right directories.
+```python 
+python downloads.py
+```
 
 ## Codes
-- `data_loader.py` download Oxford-102 flower dataset (run this first).
+- `downloads.py` download Oxford-102 flower dataset and caption files(run this first).
+- `data_loader.py` load data for further processing.
 - `train_txt2im.py` train a text to image model.
 - `utils.py` helper functions.
 - `model.py` models.
