@@ -156,7 +156,7 @@ def main_train():
         # print(sample_sentence[i])
     sample_sentence = tl.prepro.pad_sequences(sample_sentence, padding='post')
 
-    n_epoch = 600
+    n_epoch = 100 # 600
     print_freq = 1
     n_batch_epoch = int(n_images_train / batch_size)
     # exit()
