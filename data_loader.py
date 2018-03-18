@@ -20,8 +20,8 @@ if dataset == '102flowers':
     captions_ids = [80000, any]
     """
     cwd = os.getcwd()
-    img_dir = os.path.join(cwd, '102flowers/102flowers')
-    caption_dir = os.path.join(cwd, '102flowers/text_c10')
+    img_dir = os.path.join(cwd, '102flowers')
+    caption_dir = os.path.join(cwd, 'text_c10')
     VOC_FIR = cwd + '/vocab.txt'
 
     ## load captions
